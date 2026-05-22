@@ -6,14 +6,18 @@ import path from 'path';
 // Vite Configuration for Shift Roster App
 // - React plugin for JSX support
 // - Path aliases for clean imports (@components, @services, etc.)
-// - Base path set for GitHub Pages deployment
+// - Base path set for GitHub Pages deployment (supports feature branches)
 // ============================================================================
+
+const base = process.env.VITE_BASE || '/ShiftRoaster/';
 
 export default defineConfig({
   plugins: [react()],
 
-  // Base path for GitHub Pages (change 'shift-roster' to your repo name)
-  base: '/ShiftRoaster/',
+  // Base path for GitHub Pages
+  // - Main branch: /ShiftRoaster/
+  // - Feature branches: /feature/branch-name/
+  base: base,
 
   resolve: {
     alias: {
