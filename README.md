@@ -35,10 +35,13 @@ Open http://localhost:3000 in your browser.
 
 ## Deploy to GitHub Pages
 
-```bash
-npm run build
-npm run deploy
-```
+Automatic deployment via GitHub Actions on every push to `main` or feature branches.
+
+[![Deploy to GitHub Pages](https://github.com/Knowvana/ShiftRoaster/actions/workflows/deploy.yml/badge.svg)](https://github.com/Knowvana/ShiftRoaster/actions/workflows/deploy.yml)
+
+**Deployment URLs:**
+- Main: `https://knowvana.github.io/ShiftRoaster/`
+- Feature branches: `https://knowvana.github.io/ShiftRoaster/feature/branch-name/`
 
 ## Documentation
 
