@@ -111,23 +111,24 @@ function getContrastTextColor(hexColor) {
 function RosterCell({ shiftCode, shiftColor, allShifts, onSelect, children }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const textColor = shiftCode && shiftColor ? getContrastTextColor(shiftColor) : '#cbd5e1';
+  const isEditable = typeof onSelect === 'function';
 
   return (
     <td className="relative p-0 border border-slate-100">
-      <button
-        onClick={() => setIsPickerOpen(true)}
-        className="w-full h-8 flex items-center justify-center text-[10px] font-bold cursor-pointer
-                   hover:opacity-80 transition-opacity"
+      <div
+        onClick={isEditable ? () => setIsPickerOpen(true) : undefined}
+        className={`w-full h-8 flex items-center justify-center text-[10px] font-bold transition-opacity
+                   ${isEditable ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
         style={{
           backgroundColor: shiftCode && shiftColor ? shiftColor : 'transparent',
           color: textColor,
         }}
-        title={shiftCode || 'Click to assign'}
+        title={shiftCode || (isEditable ? 'Click to assign' : '')}
       >
         {shiftCode || '—'}
-      </button>
+      </div>
       {children}
-      {isPickerOpen && (
+      {isEditable && isPickerOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsPickerOpen(false)} />
           <ShiftPicker
@@ -813,7 +814,7 @@ export default function RosterPage() {
 
   const handleExport = () => {
     if (Object.keys(assignments).length === 0) { showToast('Nothing to export', 'error'); return; }
-    exportRosterToExcel(currentProject.name, members, shifts, assignments, selectedYear, selectedMonth);
+    exportRosterToExcel(currentProject.name, members, shifts, assignments, selectedYear, selectedMonth, onCallAssignments);
     showToast('Excel file downloaded!', 'success');
   };
 

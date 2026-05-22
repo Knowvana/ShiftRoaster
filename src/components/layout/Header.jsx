@@ -110,7 +110,7 @@ export default function Header({ onToggleSidebar }) {
         <ProjectSwitcher />
       </div>
 
-      {/* Right side: syncing indicator + user info + logout */}
+      {/* Right side: syncing indicator + user info + login/logout */}
       <div className="flex items-center gap-4">
         {/* Syncing indicator */}
         {isSyncing && (
@@ -125,26 +125,39 @@ export default function Header({ onToggleSidebar }) {
           </div>
         )}
 
-        {/* User display */}
-        <div className="flex items-center gap-2 text-sm text-slate-600">
-          <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center">
-            <User size={14} className="text-brand-600" />
-          </div>
-          <span className="hidden sm:inline font-medium">
-            {currentUser ? currentUser.displayName : 'Admin'}
-          </span>
-        </div>
+        {currentUser ? (
+          <>
+            {/* User display */}
+            <div className="flex items-center gap-2 text-sm text-slate-600">
+              <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center">
+                <User size={14} className="text-brand-600" />
+              </div>
+              <span className="hidden sm:inline font-medium">
+                {currentUser.displayName}
+              </span>
+            </div>
 
-        {/* Logout button */}
-        <button
-          onClick={logout}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
-                     text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
-          title="Sign out"
-        >
-          <LogOut size={16} />
-          <span className="hidden sm:inline">Sign Out</span>
-        </button>
+            {/* Logout button */}
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                         text-slate-600 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+              title="Sign out"
+            >
+              <LogOut size={16} />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          </>
+        ) : (
+          <a
+            href="#/login"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                       bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+          >
+            <User size={14} />
+            <span>Admin Sign In</span>
+          </a>
+        )}
       </div>
     </header>
   );

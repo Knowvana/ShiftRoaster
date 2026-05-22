@@ -16,8 +16,22 @@ import { useAuth } from '@hooks/useAuth';
 import { useProject } from '@hooks/useProject';
 
 export function usePermissions() {
-  const { currentUser } = useAuth();
+  const { currentUser, isLoggedIn } = useAuth();
   const { currentProject } = useProject();
+
+  // If not logged in, no permissions at all (read-only public access)
+  if (!isLoggedIn) {
+    return {
+      role: 'public',
+      isSiteAdmin: false,
+      isProjectAdmin: false,
+      isAssignedToProject: false,
+      canEdit: false,
+      canManageProjects: false,
+      canManageAdmins: false,
+      canManageEmail: false,
+    };
+  }
 
   const role = currentUser?.role || 'resource';
 

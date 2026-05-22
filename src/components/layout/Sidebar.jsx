@@ -25,16 +25,17 @@ import {
 } from 'lucide-react';
 import appConfig from '@config/app.json';
 import { usePermissions } from '@hooks/usePermissions';
+import { useAuth } from '@hooks/useAuth';
 
 // ---- Navigation Items ----
 // Each item has a label, path, and icon component
-// minRole: 'resource' = everyone, 'project_admin' = admins only, 'site_admin' = site admin only
+// minRole: 'public' = no login needed, 'project_admin' = admins only, 'site_admin' = site admin only
 const NAV_ITEMS = [
-  { label: 'Dashboard',     path: '/dashboard',    icon: LayoutDashboard, minRole: 'resource' },
-  { label: 'Roster',        path: '/roster',       icon: Calendar,        minRole: 'resource' },
-  { label: 'Team Members',  path: '/members',      icon: Users,           minRole: 'resource' },
-  { label: 'Shifts',        path: '/shifts',       icon: Clock,           minRole: 'resource' },
-  { label: 'Swap Requests', path: '/swaps',        icon: ArrowLeftRight,  minRole: 'resource' },
+  { label: 'Dashboard',     path: '/dashboard',    icon: LayoutDashboard, minRole: 'public' },
+  { label: 'Roster',        path: '/roster',       icon: Calendar,        minRole: 'public' },
+  { label: 'Team Members',  path: '/members',      icon: Users,           minRole: 'project_admin' },
+  { label: 'Shifts',        path: '/shifts',       icon: Clock,           minRole: 'project_admin' },
+  { label: 'Swap Requests', path: '/swaps',        icon: ArrowLeftRight,  minRole: 'project_admin' },
   { label: 'Email Config',  path: '/email-config', icon: Mail,            minRole: 'project_admin' },
   { label: 'Projects',      path: '/projects',     icon: FolderOpen,      minRole: 'site_admin' },
 ];
@@ -64,15 +65,18 @@ function SidebarLink({ item, onClick }) {
 
 // ---- Main Sidebar Component ----
 export default function Sidebar({ isOpen, onClose }) {
+  const { isLoggedIn } = useAuth();
   const { isSiteAdmin, isProjectAdmin } = usePermissions();
 
   const visibleItems = useMemo(() => {
     return NAV_ITEMS.filter((item) => {
+      if (item.minRole === 'public') return true; // Always visible
+      if (!isLoggedIn) return false; // Hide admin items when not logged in
       if (item.minRole === 'site_admin') return isSiteAdmin;
       if (item.minRole === 'project_admin') return isSiteAdmin || isProjectAdmin;
-      return true; // 'resource' — everyone sees it
+      return true;
     });
-  }, [isSiteAdmin, isProjectAdmin]);
+  }, [isLoggedIn, isSiteAdmin, isProjectAdmin]);
 
   return (
     <>

@@ -6,6 +6,12 @@
  * - React Router for page navigation
  * - Context providers for global state (Auth, Project, Toast)
  * - Main layout wrapper with sidebar and header
+ * 
+ * Access model:
+ *   - Dashboard + Roster: publicly visible (read-only, no login)
+ *   - Team Members, Shifts, Swaps: require login (project_admin+)
+ *   - Email Config: require project_admin+
+ *   - Projects: require site_admin
  * ============================================================================
  */
 
@@ -26,9 +32,9 @@ import ProjectsPage from '@pages/ProjectsPage';
 import EmailConfigPage from '@pages/EmailConfigPage';
 import { useAuth } from '@hooks/useAuth';
 
-// ---- Protected Route Wrapper ----
-// Only allows access if the user is logged in as admin
-function ProtectedRoute({ children }) {
+// ---- Admin Route Wrapper ----
+// Only allows access if the user is logged in
+function AdminRoute({ children }) {
   const { isLoggedIn } = useAuth();
 
   if (!isLoggedIn) {
@@ -38,9 +44,9 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-// ---- Public Route Wrapper ----
+// ---- Login Route Wrapper ----
 // Redirects to dashboard if already logged in
-function PublicRoute({ children }) {
+function LoginRoute({ children }) {
   const { isLoggedIn } = useAuth();
 
   if (isLoggedIn) {
@@ -55,33 +61,30 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Public: Login page */}
+      {/* Login page */}
       <Route
         path="/login"
         element={
-          <PublicRoute>
+          <LoginRoute>
             <LoginPage />
-          </PublicRoute>
+          </LoginRoute>
         }
       />
 
-      {/* Protected: All admin pages wrapped in MainLayout */}
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <MainLayout />
-          </ProtectedRoute>
-        }
-      >
+      {/* MainLayout wraps all pages (public + admin) */}
+      <Route path="/" element={<MainLayout />}>
         <Route index element={<Navigate to="/dashboard" replace />} />
+
+        {/* Public read-only pages (no login required) */}
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="roster" element={<RosterPage />} />
-        <Route path="members" element={<MembersPage />} />
-        <Route path="shifts" element={<ShiftsPage />} />
-        <Route path="swaps" element={<SwapRequestsPage />} />
-        <Route path="projects" element={<ProjectsPage />} />
-        <Route path="email-config" element={<EmailConfigPage />} />
+
+        {/* Admin pages (login required) */}
+        <Route path="members" element={<AdminRoute><MembersPage /></AdminRoute>} />
+        <Route path="shifts" element={<AdminRoute><ShiftsPage /></AdminRoute>} />
+        <Route path="swaps" element={<AdminRoute><SwapRequestsPage /></AdminRoute>} />
+        <Route path="projects" element={<AdminRoute><ProjectsPage /></AdminRoute>} />
+        <Route path="email-config" element={<AdminRoute><EmailConfigPage /></AdminRoute>} />
       </Route>
 
       {/* Catch-all: redirect unknown routes to dashboard */}

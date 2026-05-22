@@ -217,6 +217,14 @@ function doPost(e) {
         saveOnCallAssignmentsData(body.projectId, Number(body.year), Number(body.month), body.assignments);
         return jsonResponse({ success: true });
 
+      // ---- Project Admin Credentials Email ----
+      case 'sendProjectAdminCredentials':
+        var credResult = sendProjectAdminCredentialsEmail(
+          body.projectName, body.adminEmail, body.adminDisplayName,
+          body.username, body.password, body.siteAdminEmail, body.isReset
+        );
+        return jsonResponse(credResult);
+
       default:
         return jsonResponse({ success: false, error: 'Unknown action: ' + action });
     }
@@ -418,6 +426,18 @@ function deleteProject(projectId) {
       }
     }
   }
+
+  // Remove project admin accounts associated with this project
+  var admins = getAdmins();
+  var filtered = admins.filter(function(a) {
+    if (a.role !== 'project_admin') return true; // keep non-project admins
+    var pIds = [];
+    try { pIds = typeof a.projectIds === 'string' ? JSON.parse(a.projectIds || '[]') : (a.projectIds || []); } catch(e) { pIds = []; }
+    return pIds.indexOf(projectId) === -1; // keep if not assigned to this project
+  });
+  if (filtered.length !== admins.length) {
+    saveAdmins(filtered);
+  }
 }
 
 // ============================================================================
@@ -442,7 +462,7 @@ function getAdmins() {
 }
 
 function saveAdmins(adminsArray) {
-  writeSheetData('_admins', adminsArray, ['username', 'passwordHash', 'displayName', 'role', 'projectIds']);
+  writeSheetData('_admins', adminsArray, ['username', 'passwordHash', 'displayName', 'role', 'projectIds', 'email']);
 }
 
 function verifyLogin(username, passwordHash) {
@@ -1367,6 +1387,74 @@ function createLegendSheet(shifts) {
   }
 
   sheet.autoResizeColumns(1, header.length);
+}
+
+// ============================================================================
+// PROJECT ADMIN CREDENTIALS EMAIL
+// ============================================================================
+
+/**
+ * Send project admin credentials email to the project admin, CC site admin.
+ */
+function sendProjectAdminCredentialsEmail(projectName, adminEmail, adminDisplayName, username, password, siteAdminEmail, isReset) {
+  if (!adminEmail) return { success: false, error: 'No admin email provided' };
+
+  var actionLabel = isReset ? 'Password Reset' : 'Account Created';
+  var subject = '[Shift Roster] ' + actionLabel + ' — ' + projectName;
+
+  var html = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0;">';
+  html += '<div style="max-width:560px;margin:24px auto;background:#ffffff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">';
+
+  // Header
+  html += '<div style="background:linear-gradient(135deg,#0d9488,#059669);padding:24px 32px;text-align:center;">';
+  html += '<h1 style="color:#ffffff;font-size:20px;margin:0;">Shift Roster</h1>';
+  html += '<p style="color:#d1fae5;font-size:13px;margin:6px 0 0;">Project Admin ' + actionLabel + '</p>';
+  html += '</div>';
+
+  // Body
+  html += '<div style="padding:28px 32px;">';
+  html += '<p style="font-size:14px;color:#334155;margin:0 0 16px;">Hi <strong>' + (adminDisplayName || 'Admin') + '</strong>,</p>';
+
+  if (isReset) {
+    html += '<p style="font-size:14px;color:#334155;margin:0 0 16px;">Your password for the project <strong>' + projectName + '</strong> has been reset by the site administrator.</p>';
+  } else {
+    html += '<p style="font-size:14px;color:#334155;margin:0 0 16px;">You have been assigned as the Project Admin for <strong>' + projectName + '</strong>. Your login credentials are below.</p>';
+  }
+
+  // Credentials box
+  html += '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:16px 20px;margin:16px 0;">';
+  html += '<table style="width:100%;font-size:14px;color:#1e293b;">';
+  html += '<tr><td style="padding:6px 0;font-weight:bold;width:100px;color:#64748b;">Username:</td><td style="padding:6px 0;"><code style="background:#e2e8f0;padding:2px 8px;border-radius:4px;font-size:13px;">' + username + '</code></td></tr>';
+  html += '<tr><td style="padding:6px 0;font-weight:bold;color:#64748b;">Password:</td><td style="padding:6px 0;"><code style="background:#fef3c7;padding:2px 8px;border-radius:4px;font-size:13px;">' + password + '</code></td></tr>';
+  html += '</table>';
+  html += '</div>';
+
+  html += '<p style="font-size:12px;color:#94a3b8;margin:16px 0 0;">Please change your password after first login. Do not share these credentials.</p>';
+  html += '</div>';
+
+  // Footer
+  html += '<div style="background:#f1f5f9;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">';
+  html += '<p style="font-size:11px;color:#94a3b8;margin:0;">Sent by Shift Roster &copy; ' + new Date().getFullYear() + '</p>';
+  html += '</div>';
+
+  html += '</div></body></html>';
+
+  try {
+    var emailOptions = {
+      to: adminEmail,
+      subject: subject,
+      htmlBody: html,
+      name: 'Shift Roster'
+    };
+    // CC site admin if email provided
+    if (siteAdminEmail) {
+      emailOptions.cc = siteAdminEmail;
+    }
+    MailApp.sendEmail(emailOptions);
+    return { success: true, data: 'Credentials email sent to ' + adminEmail };
+  } catch (err) {
+    return { success: false, error: 'Failed to send email: ' + err.message };
+  }
 }
 
 // ============================================================================
