@@ -1,0 +1,91 @@
+/* ============================================================================
+ * Global Styles for Shift Roster App
+ * 
+ * This file imports TailwindCSS layers and defines global custom styles.
+ * All component-specific styling is done via Tailwind utility classes.
+ * ============================================================================ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---- Base Layer: Global defaults ---- */
+@layer base {
+
+  /* Smooth scrolling for the entire app */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Default body font from Tailwind config (Inter) */
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Remove default focus outlines; custom focus styles are applied via Tailwind */
+  *:focus {
+    outline: none;
+  }
+
+  /* Custom scrollbar for a cleaner look */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f0fdfa; /* teal-50 */
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #5eead4; /* teal-300 */
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #14b8a6; /* teal-500 */
+  }
+}
+
+/* ---- Components Layer: Reusable class patterns ---- */
+@layer components {
+
+  /* Standard card container used across all pages */
+  .card {
+    @apply bg-gradient-to-br from-white to-teal-50/30 rounded-xl border border-slate-200 shadow-card;
+  }
+
+  /* Page container with consistent padding */
+  .page-container {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6;
+  }
+
+  /* Section heading style */
+  .section-heading {
+    @apply text-lg font-semibold text-slate-800;
+  }
+
+  /* Standard input field */
+  .input-field {
+    @apply w-full px-3 py-2 rounded-lg border border-slate-300 
+           bg-white text-slate-800 text-sm
+           placeholder:text-slate-400
+           focus:ring-2 focus:ring-brand-500 focus:border-transparent
+           transition-all duration-200;
+  }
+
+  /* Standard select dropdown */
+  .select-field {
+    @apply w-full px-3 py-2 rounded-lg border border-slate-300 
+           bg-white text-slate-800 text-sm
+           focus:ring-2 focus:ring-brand-500 focus:border-transparent
+           transition-all duration-200;
+  }
+
+  /* Standard label */
+  .field-label {
+    @apply block text-sm font-medium text-slate-700 mb-1;
+  }
+}
