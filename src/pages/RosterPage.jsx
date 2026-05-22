@@ -508,7 +508,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
           <thead>
             {/* Day names row */}
             <tr className="bg-slate-50">
-              <th className="sticky left-0 z-10 bg-slate-50 px-3 py-1 text-[10px] font-semibold text-slate-500 text-left border-b border-r border-slate-200 min-w-[120px]">
+              <th className="sticky left-0 z-10 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-500 text-left border-b border-r border-slate-200">
                 Member
               </th>
               {dayHeaders.map(({ day, dayName, isWeekend }) => (
@@ -527,7 +527,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
             </tr>
             {/* Day numbers row */}
             <tr className="bg-slate-50">
-              <th className="sticky left-0 z-10 bg-slate-50 px-3 py-1 text-[10px] font-bold text-brand-600 text-left border-b border-r border-slate-200">
+              <th className="sticky left-0 z-10 bg-slate-50 px-2 py-1 text-[10px] font-bold text-brand-600 text-left border-b border-r border-slate-200">
                 Dates →
               </th>
               {dayHeaders.map(({ day, isWeekend }) => (
@@ -541,7 +541,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
           <tbody>
             {members.map((member) => (
               <tr key={member.id} className="hover:bg-slate-50/30">
-                <td className="sticky left-0 z-10 bg-white px-3 py-1 text-[11px] font-medium text-slate-700 text-left border-r border-b border-slate-100 truncate max-w-[120px]">
+                <td className="sticky left-0 z-10 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 text-left border-r border-b border-slate-100 whitespace-nowrap">
                   {member.name}
                 </td>
                 {dayHeaders.map(({ day }) => {
@@ -578,7 +578,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
             ))}
             {/* On-Call row */}
             <tr className="bg-gradient-to-r from-violet-50 to-purple-50 border-t border-violet-200">
-              <td className="sticky left-0 z-10 bg-gradient-to-r from-violet-50 to-purple-50 px-3 py-2 text-[10px] font-bold text-violet-700 text-left border-r border-violet-200 uppercase tracking-wide">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-violet-50 to-purple-50 px-2 py-2 text-[10px] font-bold text-violet-700 text-left border-r border-violet-200 uppercase tracking-wide whitespace-nowrap">
                 <span className="flex items-center gap-1"><PhoneCall size={10} /> On-Call</span>
               </td>
               {dayHeaders.map(({ day }) => {
@@ -614,7 +614,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
             </tr>
             {/* Daily availability row */}
             <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-t-2 border-emerald-200">
-              <td className="sticky left-0 z-10 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2.5 text-[10px] font-bold text-emerald-700 text-left border-r border-emerald-200 uppercase tracking-wide">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-emerald-50 to-teal-50 px-2 py-2.5 text-[10px] font-bold text-emerald-700 text-left border-r border-emerald-200 uppercase tracking-wide whitespace-nowrap">
                 👥 Staff
               </td>
               {dayHeaders.map(({ day }) => {

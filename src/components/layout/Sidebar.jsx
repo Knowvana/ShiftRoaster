@@ -92,7 +92,7 @@ export default function Sidebar({ isOpen, onClose }) {
       {/* Sidebar panel */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 w-48 bg-gradient-to-b from-teal-50/60 via-white to-white border-r border-teal-100
+          fixed inset-y-0 left-0 z-50 w-40 bg-gradient-to-b from-teal-50/60 via-white to-white border-r border-teal-100
           transform transition-transform duration-300 ease-in-out
           lg:relative lg:translate-x-0 lg:z-0
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
