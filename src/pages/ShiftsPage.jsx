@@ -5,7 +5,7 @@
  * Full CRUD page for defining custom shift types per project:
  * - Add/edit/delete shift definitions
  * - Set shift code, name, color, start/end times
- * - Toggle working vs non-working (WO, Leave, CO)
+ * - Toggle working vs non-working (WO, Leave)
  * - Visual color picker with preset palette
  * - Reset to defaults
  * 
@@ -42,26 +42,26 @@ import {
 import { getOnCallEligibleMembers } from '@services/memberService';
 
 // ---- Preset Color Palette ----
-// A curated set of colors for the shift color picker
+// A curated set of soothing colors for the shift color picker
 const COLOR_PRESETS = [
-  '#f59e0b', '#f97316', '#ef4444', '#ec4899', '#a855f7',
-  '#8b5cf6', '#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4',
-  '#14b8a6', '#10b981', '#22c55e', '#84cc16', '#94a3b8',
-  '#64748b',
+  '#7dd3fc', '#38bdf8', '#0ea5e9', '#0284c7', '#0369a1',
+  '#6ee7b7', '#34d399', '#10b981', '#059669',
+  '#c4b5fd', '#a78bfa', '#8b5cf6',
+  '#fca5a5', '#f87171', '#cbd5e1', '#94a3b8', '#d8b4fe',
 ];
 
 // ---- Empty Form State ----
 const EMPTY_FORM = {
   code: '',
   name: '',
-  color: '#6366f1',
+  color: '#38bdf8',
   startTime: '',
   endTime: '',
   isWorkingShift: true,
 };
 
 // ---- Color Picker Component ----
-// A simple grid of preset colors + custom hex input
+// Preset color grid + native browser color picker + custom hex input
 function ColorPicker({ value, onChange }) {
   return (
     <div className="space-y-2">
@@ -83,20 +83,30 @@ function ColorPicker({ value, onChange }) {
         ))}
       </div>
 
-      {/* Custom hex input */}
+      {/* Native color picker + hex input */}
       <div className="flex items-center gap-2">
-        <div
-          className="w-8 h-8 rounded-lg border border-slate-300 flex-shrink-0"
-          style={{ backgroundColor: value }}
-        />
+        <label className="relative cursor-pointer flex-shrink-0">
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+          <div
+            className="w-8 h-8 rounded-lg border-2 border-slate-300 hover:border-slate-400 transition-colors shadow-sm"
+            style={{ backgroundColor: value }}
+            title="Click to open color picker"
+          />
+        </label>
         <input
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="#6366f1"
+          placeholder="#7dd3fc"
           className="input-field text-xs font-mono w-28"
           maxLength={7}
         />
+        <span className="text-[10px] text-slate-400">Click swatch or type hex</span>
       </div>
     </div>
   );
@@ -205,7 +215,7 @@ function ShiftForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
         <p className="text-xs text-slate-400 mt-1">
           {formData.isWorkingShift
             ? 'Working shifts count toward staffing requirements'
-            : 'Non-working: Week Off, Leave, Comp Off, etc.'
+            : 'Non-working: Week Off, Leave, etc.'
           }
         </p>
       </div>
@@ -392,7 +402,11 @@ export default function ShiftsPage() {
     if (currentProject) {
       const loaded = getShifts(currentProject.id);
       setShifts(loaded);
-      syncShifts(currentProject.id, loaded);
+      // Sync to backend (Google Sheets)
+      startSync();
+      syncShifts(currentProject.id, loaded)
+        .catch(() => {})
+        .finally(() => stopSync());
     }
   };
 

@@ -96,9 +96,21 @@ function ShiftPicker({ shifts, currentCode, onSelect }) {
   );
 }
 
+// ---- Helper: pick dark or light text color based on background luminance ----
+function getContrastTextColor(hexColor) {
+  if (!hexColor || hexColor.length < 7) return '#ffffff';
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  // Relative luminance (sRGB)
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.55 ? '#1e293b' : '#ffffff';
+}
+
 // ---- Single Roster Cell (used in Weekly + Monthly grids) ----
 function RosterCell({ shiftCode, shiftColor, allShifts, onSelect, children }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const textColor = shiftCode && shiftColor ? getContrastTextColor(shiftColor) : '#cbd5e1';
 
   return (
     <td className="relative p-0 border border-slate-100">
@@ -108,7 +120,7 @@ function RosterCell({ shiftCode, shiftColor, allShifts, onSelect, children }) {
                    hover:opacity-80 transition-opacity"
         style={{
           backgroundColor: shiftCode && shiftColor ? shiftColor : 'transparent',
-          color: shiftCode && shiftColor ? '#ffffff' : '#cbd5e1',
+          color: textColor,
         }}
         title={shiftCode || 'Click to assign'}
       >
@@ -138,8 +150,8 @@ function ShiftLegend({ shifts }) {
         {shifts.map((shift) => (
           <div key={shift.id || shift.code} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-100">
             <div
-              className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold text-white"
-              style={{ backgroundColor: shift.color }}
+              className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold"
+              style={{ backgroundColor: shift.color, color: getContrastTextColor(shift.color) }}
             >
               {shift.code}
             </div>
@@ -234,7 +246,7 @@ function DailyMemberRow({ member, shiftCode, shift, allShifts, onSelect, isOnCal
             <p className="text-sm font-semibold text-slate-800 truncate">{member.name}</p>
             {memberIsOnCall && (
               <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 flex-shrink-0">
-                <PhoneCall size={8} /> OC
+                <PhoneCall size={11} /> OC
               </span>
             )}
           </div>
@@ -503,8 +515,13 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                   {dayName}
                 </th>
               ))}
-              <th className="px-2 py-1 text-[10px] font-semibold text-slate-500 border-b border-l border-slate-200 bg-slate-50 min-w-[60px]">
-                Summary
+              <th className="px-1 py-1 text-[10px] font-semibold text-slate-500 border-b border-l border-slate-200 bg-slate-50 min-w-[100px]" colSpan={1}>
+                <div className="grid grid-cols-4 gap-px text-[7px] font-bold">
+                  <span className="text-slate-500">WO</span>
+                  <span className="text-amber-600">Lv</span>
+                  <span className="text-emerald-600">WD</span>
+                  <span className="text-violet-600">OC</span>
+                </div>
               </th>
             </tr>
             {/* Day numbers row */}
@@ -539,28 +556,20 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                       onSelect={(c) => onCellChange(member.id, day, c)}
                     >
                       {memberOnCallToday && (
-                        <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-violet-500 rounded-full ring-1 ring-white flex items-center justify-center" title="On-Call">
-                          <PhoneCall size={6} className="text-white" />
+                        <span className="absolute -top-0.5 -right-0.5 z-10 w-4.5 h-4.5 bg-yellow-400 border-2 border-white rounded-full flex items-center justify-center shadow-sm" title="On-Call">
+                          <PhoneCall size={10} className="text-yellow-900" />
                         </span>
                       )}
                     </RosterCell>
                   );
                 })}
-                <td className="px-2 py-1 text-[8px] text-slate-600 border-l border-b border-slate-100 text-left whitespace-nowrap">
+                <td className="px-1 py-1 text-[9px] text-slate-600 border-l border-b border-slate-100 text-center">
                   {memberSummary[member.id] && (
-                    <div className="flex flex-wrap gap-1">
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">
-                        WO:{memberSummary[member.id].woCount}
-                      </span>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-200 text-amber-700 font-bold">
-                        Lv:{memberSummary[member.id].leaveCount}
-                      </span>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-700 font-bold">
-                        WD:{memberSummary[member.id].shiftCount}
-                      </span>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 font-bold">
-                        OC:{memberSummary[member.id].onCallCount}
-                      </span>
+                    <div className="grid grid-cols-4 gap-px">
+                      <span className="font-bold text-slate-600">{memberSummary[member.id].woCount}</span>
+                      <span className="font-bold text-amber-600">{memberSummary[member.id].leaveCount}</span>
+                      <span className="font-bold text-emerald-600">{memberSummary[member.id].shiftCount}</span>
+                      <span className="font-bold text-violet-600">{memberSummary[member.id].onCallCount}</span>
                     </div>
                   )}
                 </td>
@@ -593,7 +602,8 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                   >
                     {count > 0 ? (
                       <div className="flex flex-col items-center gap-0">
-                        {nameLabels.map((n, i) => <span key={i}>{n}</span>)}
+                        <span className="text-[9px] font-extrabold text-violet-800">{count}</span>
+                        {nameLabels.map((n, i) => <span key={i} className="text-[7px] text-violet-600">{n}</span>)}
                       </div>
                     ) : '—'}
                   </td>
@@ -874,15 +884,54 @@ export default function RosterPage() {
   return (
     <div className="space-y-4 animate-fade-in">
 
-      {/* ---- Page Header ---- */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">Roster</h1>
-          <p className="text-sm text-slate-500 mt-1">
-            <span className="font-medium text-slate-700">{currentProject.name}</span>
-            {hasUnsavedChanges && <span className="ml-2 text-amber-600 font-medium">● Unsaved</span>}
-          </p>
+      {/* ---- Page Header (consolidated) ---- */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        {/* Title + Project Name + View Tabs + Date Navigator */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Roster</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              <span className="font-medium text-slate-700">{currentProject.name}</span>
+              {hasUnsavedChanges && <span className="ml-2 text-amber-600 font-medium">● Unsaved</span>}
+            </p>
+          </div>
+          
+          {/* View toggle tabs */}
+          <div className="flex bg-slate-100 rounded-lg p-0.5">
+            {VIEW_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeView === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveView(tab.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all
+                    ${isActive
+                      ? 'bg-white text-brand-700 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                >
+                  <Icon size={13} />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Date Navigation */}
+          <div className="flex items-center gap-1.5">
+            <button onClick={onPrev} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors" title="Previous">
+              <ChevronLeft size={16} />
+            </button>
+            <button onClick={goToToday} className="px-3 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors min-w-[140px] text-center">
+              {navLabel}
+            </button>
+            <button onClick={onNext} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors" title="Next">
+              <ChevronRight size={16} />
+            </button>
+          </div>
         </div>
+
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
           {canEdit && (
@@ -899,53 +948,10 @@ export default function RosterPage() {
             <Download size={14} /> Export
           </button>
           {canEdit && (
-            <button onClick={handleGenerateOnCall} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors">
-              <PhoneCall size={14} /> On-Call
-            </button>
-          )}
-          {canEdit && (
             <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors">
               <Trash2 size={14} /> Clear
             </button>
           )}
-        </div>
-      </div>
-
-      {/* ---- View Tabs + Date Navigation ---- */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        {/* View toggle tabs */}
-        <div className="flex bg-slate-100 rounded-lg p-0.5">
-          {VIEW_TABS.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeView === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveView(tab.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all
-                  ${isActive
-                    ? 'bg-white text-brand-700 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                  }`}
-              >
-                <Icon size={13} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Date navigation */}
-        <div className="flex items-center gap-2">
-          <button onClick={onPrev} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors" title="Previous">
-            <ChevronLeft size={18} />
-          </button>
-          <button onClick={goToToday} className="px-4 py-1.5 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors min-w-[180px] text-center">
-            {navLabel}
-          </button>
-          <button onClick={onNext} className="p-1.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-100 transition-colors" title="Next">
-            <ChevronRight size={18} />
-          </button>
         </div>
       </div>
 

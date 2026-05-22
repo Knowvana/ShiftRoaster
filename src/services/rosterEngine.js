@@ -8,12 +8,12 @@
  * 1. Every member gets at least 2 days off per week
  * 2. No one stays in the same shift for the entire month (rotation)
  * 3. Shifts are distributed as evenly as possible across members
- * 4. Pre-filled cells (leave, comp-off) are respected
+ * 4. Pre-filled cells (leave) are respected
  * 5. Minimum staffing per shift is maintained
  * 6. Members don't work more than 5 consecutive days without a day off
  * 
  * The algorithm works in 4 phases:
- *   Phase 1: Mark pre-filled cells (leave, comp-off, existing WO)
+ *   Phase 1: Mark pre-filled cells (leave, existing WO)
  *   Phase 2: Assign week-offs (ensure ≥2 per week, spread evenly)
  *   Phase 3: Assign working shifts (rotate, balance counts)
  *   Phase 4: Balance pass (even out any imbalances)
@@ -61,13 +61,13 @@ export function generateRoster(members, shifts, year, month, rules = {}, existin
   for (const member of activeMembers) {
     assignments[member.id] = {};
 
-    // Copy over any pre-filled cells (leave, comp-off, etc.)
+    // Copy over any pre-filled cells (leave, etc.)
     if (existingAssignments[member.id]) {
       for (let day = 1; day <= totalDays; day++) {
         const dayStr = String(day);
         const existing = existingAssignments[member.id][dayStr];
 
-        // Only preserve non-working shift codes (PL, CO, etc.)
+        // Only preserve non-working shift codes (PL, etc.)
         // Don't preserve old working shifts or WOs — we'll regenerate those
         if (existing && !isWorkingShiftCode(existing, workingShifts) && existing !== woShift.code) {
           assignments[member.id][dayStr] = existing;
@@ -112,7 +112,7 @@ function assignWeekOffs(assignments, members, totalDays, year, month, minDaysOff
 
     for (const week of weeks) {
       // Count how many off-days this member already has in this week
-      // (from pre-filled leave/comp-off)
+      // (from pre-filled leave)
       let offDaysInWeek = 0;
       for (const day of week) {
         const dayStr = String(day);
@@ -353,7 +353,7 @@ function countWoOnDay(assignments, members, day, woCode) {
 
 /**
  * Check if a shift code belongs to a working shift.
- * Non-working codes include: WO, PL, CO, and any custom non-working shifts.
+ * Non-working codes include: WO, PL, and any custom non-working shifts.
  */
 function isWorkingShiftCode(code, workingShifts) {
   return workingShifts.some((s) => s.code === code);
@@ -361,11 +361,11 @@ function isWorkingShiftCode(code, workingShifts) {
 
 /**
  * Simple check: is this code a "working" assignment?
- * Any code that is NOT WO, PL, CO is considered working.
+ * Any code that is NOT WO, PL is considered working.
  * This is a fallback when we don't have the full shift list.
  */
 function isWorkingCode(code) {
-  const nonWorkingCodes = ['WO', 'PL', 'CO', 'CL', 'SL', 'EL', 'LV'];
+  const nonWorkingCodes = ['WO', 'PL', 'CL', 'SL', 'EL', 'LV'];
   return !nonWorkingCodes.includes(code);
 }
 

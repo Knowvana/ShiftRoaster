@@ -6,12 +6,11 @@
   "appsScriptToken": "shiftRoster2026",
   "googleSheetsClientId": "822686480219-eete6qmm5b0tbote3o0qaib8qsfvaro1.apps.googleusercontent.com",
   "defaultShifts": [
-    { "code": "M",  "name": "Morning",       "color": "#f59e0b", "startTime": "06:00", "endTime": "14:00", "isWorkingShift": true },
-    { "code": "A",  "name": "Afternoon",      "color": "#3b82f6", "startTime": "14:00", "endTime": "22:00", "isWorkingShift": true },
-    { "code": "N",  "name": "Night",          "color": "#8b5cf6", "startTime": "22:00", "endTime": "06:00", "isWorkingShift": true },
-    { "code": "WO", "name": "Week Off",       "color": "#94a3b8", "startTime": null,    "endTime": null,    "isWorkingShift": false },
-    { "code": "PL", "name": "Planned Leave",  "color": "#ef4444", "startTime": null,    "endTime": null,    "isWorkingShift": false },
-    { "code": "CO", "name": "Comp Off",       "color": "#ec4899", "startTime": null,    "endTime": null,    "isWorkingShift": false }
+    { "code": "M",  "name": "Morning",       "color": "#e0f2fe", "startTime": "06:00", "endTime": "13:30", "isWorkingShift": true },
+    { "code": "A",  "name": "Afternoon",      "color": "#06b6d4", "startTime": "13:00", "endTime": "22:30", "isWorkingShift": true },
+    { "code": "N",  "name": "Night",          "color": "#0369a1", "startTime": "22:00", "endTime": "06:30", "isWorkingShift": true },
+    { "code": "WO", "name": "Week Off",       "color": "#d1d5db", "startTime": null,    "endTime": null,    "isWorkingShift": false },
+    { "code": "PL", "name": "Planned Leave",  "color": "#fecaca", "startTime": null,    "endTime": null,    "isWorkingShift": false }
   ],
   "rosterRules": {
     "minDaysOffPerWeek": 2,

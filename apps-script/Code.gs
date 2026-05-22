@@ -279,6 +279,13 @@ function readSheetData(sheetName) {
     var row = {};
     for (var j = 0; j < headers.length; j++) {
       var val = data[i][j];
+      // Google Sheets auto-converts time strings (e.g. "06:00") into Date objects.
+      // Detect this and convert back to "HH:MM" string format.
+      if (val instanceof Date) {
+        var h = val.getHours();
+        var m = val.getMinutes();
+        val = (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+      }
       // Try to parse JSON strings (for nested objects like assignments)
       if (typeof val === 'string' && (val.startsWith('{') || val.startsWith('['))) {
         try { val = JSON.parse(val); } catch(e) { /* keep as string */ }
