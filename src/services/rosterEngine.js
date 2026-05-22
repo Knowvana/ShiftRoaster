@@ -161,13 +161,22 @@ function assignWeekOffs(assignments, members, totalDays, year, month, minDaysOff
 function assignWorkingShifts(assignments, members, workingShifts, totalDays, year, month) {
   if (workingShifts.length === 0) return;
 
+  // Pre-compute default shifts (those marked isDefault)
+  const defaultShifts = workingShifts.filter((s) => s.isDefault);
+
   // Each member gets a different starting shift index for rotation
   for (let memberIndex = 0; memberIndex < members.length; memberIndex++) {
     const member = members[memberIndex];
     const memberAssign = assignments[member.id];
 
+    // Determine which shifts this member can be assigned
+    // If defaultShiftOnly is true and there are default shifts, only use those
+    const memberShifts = (member.defaultShiftOnly && defaultShifts.length > 0)
+      ? defaultShifts
+      : workingShifts;
+
     // Starting shift offset based on member index (ensures different members start differently)
-    let shiftIndex = memberIndex % workingShifts.length;
+    let shiftIndex = memberIndex % memberShifts.length;
 
     // Track how many consecutive days this member has had the same shift
     let consecutiveSameShift = 0;
@@ -187,12 +196,12 @@ function assignWorkingShifts(assignments, members, workingShifts, totalDays, yea
       }
 
       // Pick the next shift in rotation
-      let chosenShift = workingShifts[shiftIndex % workingShifts.length];
+      let chosenShift = memberShifts[shiftIndex % memberShifts.length];
 
       // If same shift for too many consecutive days, rotate to next
       if (chosenShift.code === lastShiftCode && consecutiveSameShift >= 5) {
         shiftIndex++;
-        chosenShift = workingShifts[shiftIndex % workingShifts.length];
+        chosenShift = memberShifts[shiftIndex % memberShifts.length];
       }
 
       // Assign the shift
@@ -261,6 +270,13 @@ function fixConsecutiveDays(assignments, members, totalDays, maxConsecutive, woC
 function balanceShifts(assignments, members, workingShifts, totalDays) {
   if (members.length < 2 || workingShifts.length < 2) return;
 
+  // Build a member lookup for defaultShiftOnly checks
+  const memberMap = {};
+  for (const m of members) memberMap[m.id] = m;
+
+  // Pre-compute default shift codes
+  const defaultShiftCodes = new Set(workingShifts.filter((s) => s.isDefault).map((s) => s.code));
+
   // For each working shift, count how many times each member has it
   for (const shift of workingShifts) {
     const memberCounts = members.map((member) => {
@@ -297,6 +313,12 @@ function balanceShifts(assignments, members, workingShifts, totalDays) {
           isWorkingCode(lowShift) &&
           lowShift !== shift.code
         ) {
+          // Don't swap if it would violate defaultShiftOnly constraints
+          const highMember = memberMap[highest.memberId];
+          const lowMember = memberMap[lowest.memberId];
+          if (highMember.defaultShiftOnly && defaultShiftCodes.size > 0 && !defaultShiftCodes.has(lowShift)) continue;
+          if (lowMember.defaultShiftOnly && defaultShiftCodes.size > 0 && !defaultShiftCodes.has(highShift)) continue;
+
           // Swap the two assignments
           assignments[highest.memberId][dayStr] = lowShift;
           assignments[lowest.memberId][dayStr] = highShift;

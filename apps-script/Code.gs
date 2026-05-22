@@ -475,7 +475,7 @@ function getMembers(projectId) {
 function saveMembers(projectId, membersArray) {
   if (!projectId) return;
   writeSheetData('_members_' + projectId, membersArray,
-    ['id', 'name', 'email', 'phone', 'role', 'memberType', 'isActive', 'isOnCallEligible', 'createdAt']);
+    ['id', 'name', 'email', 'phone', 'role', 'memberType', 'isActive', 'isOnCallEligible', 'defaultShiftOnly', 'createdAt']);
 }
 
 // ============================================================================
@@ -490,7 +490,7 @@ function getShifts(projectId) {
 function saveShifts(projectId, shiftsArray) {
   if (!projectId) return;
   writeSheetData('_shifts_' + projectId, shiftsArray,
-    ['id', 'code', 'name', 'color', 'startTime', 'endTime', 'isWorkingShift', 'order']);
+    ['id', 'code', 'name', 'color', 'startTime', 'endTime', 'isWorkingShift', 'isDefault', 'order']);
 }
 
 // ============================================================================

@@ -13,7 +13,8 @@
  *   - color: hex color for the roster cell background
  *   - startTime: shift start time string (e.g., "06:00") or null
  *   - endTime: shift end time string (e.g., "14:00") or null
- *   - isWorkingShift: true for work shifts, false for WO/Leave/CO
+ *   - isWorkingShift: true for work shifts, false for WO/Leave
+ *   - isDefault: true if this is a default shift (for default-shift-only members)
  *   - order: display order in the roster legend
  * 
  * When a project has no shifts defined, the default shifts from
@@ -115,6 +116,7 @@ export function addShift(projectId, shiftData) {
     startTime: shiftData.startTime || null,
     endTime: shiftData.endTime || null,
     isWorkingShift: shiftData.isWorkingShift !== false,
+    isDefault: shiftData.isDefault || false,
     order: shifts.length,
   };
 
@@ -153,6 +155,7 @@ export function updateShift(projectId, shiftId, updates) {
         startTime: updates.startTime !== undefined ? updates.startTime : shift.startTime,
         endTime: updates.endTime !== undefined ? updates.endTime : shift.endTime,
         isWorkingShift: updates.isWorkingShift !== undefined ? updates.isWorkingShift : shift.isWorkingShift,
+        isDefault: updates.isDefault !== undefined ? updates.isDefault : (shift.isDefault || false),
         order: updates.order !== undefined ? updates.order : shift.order,
       };
       return updatedShift;
@@ -224,6 +227,7 @@ export async function fetchShifts(projectId) {
     const fixed = shifts.map(s => ({
       ...s,
       isWorkingShift: s.isWorkingShift === true || s.isWorkingShift === 'true' || s.isWorkingShift === 'TRUE',
+      isDefault: s.isDefault === true || s.isDefault === 'true' || s.isDefault === 'TRUE',
       order: Number(s.order) || 0,
     }));
     saveShifts(projectId, fixed);
@@ -256,6 +260,7 @@ function loadDefaults(projectId) {
     startTime: shift.startTime,
     endTime: shift.endTime,
     isWorkingShift: shift.isWorkingShift,
+    isDefault: shift.isDefault || false,
     order: index,
   }));
 

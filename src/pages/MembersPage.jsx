@@ -44,6 +44,7 @@ const EMPTY_FORM = {
   role: '',
   memberType: 'resource',
   isOnCallEligible: false,
+  defaultShiftOnly: false,
 };
 
 // ---- Member Form Component ----
@@ -170,6 +171,27 @@ function MemberForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
         </div>
       )}
 
+      {/* Default Shift Only (only for resources) */}
+      {formData.memberType === 'resource' && (
+        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-200">
+          <div>
+            <p className="text-sm font-medium text-slate-700">Default Shift Only</p>
+            <p className="text-xs text-slate-400">Only assign the default shift to this resource</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange({ ...formData, defaultShiftOnly: !formData.defaultShiftOnly })}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+              ${formData.defaultShiftOnly ? 'bg-emerald-600' : 'bg-slate-300'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm
+                ${formData.defaultShiftOnly ? 'translate-x-6' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
+      )}
+
       {/* Action buttons in modal footer area */}
       <div className="flex justify-end gap-3 pt-2">
         <button
@@ -267,6 +289,7 @@ export default function MembersPage() {
       role: member.role || '',
       memberType: member.memberType || 'resource',
       isOnCallEligible: member.isOnCallEligible || false,
+      defaultShiftOnly: member.defaultShiftOnly || false,
     });
     setEditingMember(member);
     setIsAddModalOpen(true);
@@ -323,6 +346,17 @@ export default function MembersPage() {
     updateMember(currentProject.id, member.id, { isOnCallEligible: newStatus });
     showToast(
       `${member.name} is now ${newStatus ? 'eligible' : 'not eligible'} for on-call`,
+      newStatus ? 'success' : 'info'
+    );
+    reloadMembers();
+  };
+
+  /** Toggle a member's default shift only status */
+  const handleToggleDefaultShiftOnly = (member) => {
+    const newStatus = !member.defaultShiftOnly;
+    updateMember(currentProject.id, member.id, { defaultShiftOnly: newStatus });
+    showToast(
+      `${member.name} will ${newStatus ? 'only be assigned default shifts' : 'be assigned all shifts'}`,
       newStatus ? 'success' : 'info'
     );
     reloadMembers();
@@ -420,14 +454,17 @@ export default function MembersPage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider hidden md:table-cell">
                     Role
                   </th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider hidden lg:table-cell">
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider hidden lg:table-cell">
                     On-Call
                   </th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider hidden lg:table-cell">
+                    Default Shift
+                  </th>
                   {canEdit && (
-                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                    <th className="text-left px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                       Actions
                     </th>
                   )}
@@ -478,7 +515,7 @@ export default function MembersPage() {
                     </td>
 
                     {/* Status toggle */}
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3 text-left">
                       {canEdit ? (
                         <button
                           onClick={() => handleToggleActive(member)}
@@ -512,7 +549,7 @@ export default function MembersPage() {
                     </td>
 
                     {/* On-Call Eligibility toggle */}
-                    <td className="px-4 py-3 text-center hidden lg:table-cell">
+                    <td className="px-4 py-3 text-left hidden lg:table-cell">
                       {(member.memberType || 'resource') === 'resource' ? (
                         canEdit ? (
                           <button
@@ -541,6 +578,42 @@ export default function MembersPage() {
                           >
                             <PhoneCall size={12} />
                             {member.isOnCallEligible ? 'Eligible' : 'Not Eligible'}
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-slate-300 text-xs">N/A</span>
+                      )}
+                    </td>
+
+                    {/* Default Shift Only toggle */}
+                    <td className="px-4 py-3 text-left hidden lg:table-cell">
+                      {(member.memberType || 'resource') === 'resource' ? (
+                        canEdit ? (
+                          <button
+                            onClick={() => handleToggleDefaultShiftOnly(member)}
+                            className="inline-flex items-center gap-2 cursor-pointer group"
+                            title={`Click to ${member.defaultShiftOnly ? 'disable' : 'enable'} default shift only`}
+                          >
+                            {/* Toggle switch */}
+                            <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors
+                              ${member.defaultShiftOnly ? 'bg-emerald-600' : 'bg-slate-300 group-hover:bg-slate-400'}`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm
+                                ${member.defaultShiftOnly ? 'translate-x-[18px]' : 'translate-x-[3px]'}`}
+                              />
+                            </div>
+                            <span className={`text-xs font-medium ${member.defaultShiftOnly ? 'text-emerald-700' : 'text-slate-400'}`}>
+                              {member.defaultShiftOnly ? 'Yes' : 'No'}
+                            </span>
+                          </button>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
+                            ${member.defaultShiftOnly
+                              ? 'bg-emerald-50 text-emerald-700'
+                              : 'bg-slate-100 text-slate-400'
+                            }`}
+                          >
+                            {member.defaultShiftOnly ? 'Yes' : 'No'}
                           </span>
                         )
                       ) : (

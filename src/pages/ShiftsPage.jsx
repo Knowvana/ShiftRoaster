@@ -58,6 +58,7 @@ const EMPTY_FORM = {
   startTime: '',
   endTime: '',
   isWorkingShift: true,
+  isDefault: false,
 };
 
 // ---- Color Picker Component ----
@@ -220,6 +221,27 @@ function ShiftForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
         </p>
       </div>
 
+      {/* Default Shift toggle (only for working shifts) */}
+      {formData.isWorkingShift && (
+        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-200">
+          <div>
+            <p className="text-sm font-medium text-slate-700">Default Shift</p>
+            <p className="text-xs text-slate-400">Assign this shift to default-shift-only members</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange({ ...formData, isDefault: !formData.isDefault })}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+              ${formData.isDefault ? 'bg-brand-600' : 'bg-slate-300'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm
+                ${formData.isDefault ? 'translate-x-6' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
+      )}
+
       {/* Start/End Times (only for working shifts) */}
       {formData.isWorkingShift && (
         <div className="grid grid-cols-2 gap-3">
@@ -310,6 +332,13 @@ function ShiftCard({ shift, onEdit, onDelete, canEdit }) {
             ) : (
               <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
                 <Coffee size={10} /> Non-Working
+              </span>
+            )}
+
+            {/* Default badge */}
+            {shift.isDefault && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                ★ Default
               </span>
             )}
 
@@ -428,6 +457,7 @@ export default function ShiftsPage() {
       startTime: shift.startTime || '',
       endTime: shift.endTime || '',
       isWorkingShift: shift.isWorkingShift,
+      isDefault: shift.isDefault || false,
     });
     setEditingShift(shift);
     setIsModalOpen(true);

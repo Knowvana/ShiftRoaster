@@ -15,6 +15,7 @@
  *   - role: team role/designation (optional)
  *   - memberType: 'resource' (shift worker) or 'manager' (supervisor, not assigned to shifts)
  *   - isActive: whether the member is currently active (default true)
+ *   - defaultShiftOnly: if true, roster engine only assigns default shifts to this member
  *   - createdAt: ISO timestamp of creation
  * ============================================================================
  */
@@ -81,6 +82,7 @@ export function addMember(projectId, memberData) {
     memberType: memberData.memberType || 'resource',
     isActive: true,
     isOnCallEligible: memberData.isOnCallEligible !== undefined ? memberData.isOnCallEligible : false,
+    defaultShiftOnly: memberData.defaultShiftOnly || false,
     createdAt: new Date().toISOString(),
   };
 
@@ -109,6 +111,7 @@ export function updateMember(projectId, memberId, updates) {
         memberType: updates.memberType !== undefined ? updates.memberType : (member.memberType || 'resource'),
         isActive: updates.isActive !== undefined ? updates.isActive : member.isActive,
         isOnCallEligible: updates.isOnCallEligible !== undefined ? updates.isOnCallEligible : (member.isOnCallEligible || false),
+        defaultShiftOnly: updates.defaultShiftOnly !== undefined ? updates.defaultShiftOnly : (member.defaultShiftOnly || false),
       };
       return updatedMember;
     }
@@ -215,8 +218,15 @@ export async function fetchMembers(projectId) {
     const res = await apiGet('getMembers', { projectId });
     const members = res.data || [];
     if (members.length > 0) {
-      saveMembers(projectId, members);
-      return members.sort((a, b) => a.name.localeCompare(b.name));
+      // Fix boolean parsing (Sheets may return strings)
+      const fixed = members.map(m => ({
+        ...m,
+        isActive: m.isActive === true || m.isActive === 'true' || m.isActive === 'TRUE',
+        isOnCallEligible: m.isOnCallEligible === true || m.isOnCallEligible === 'true' || m.isOnCallEligible === 'TRUE',
+        defaultShiftOnly: m.defaultShiftOnly === true || m.defaultShiftOnly === 'true' || m.defaultShiftOnly === 'TRUE',
+      }));
+      saveMembers(projectId, fixed);
+      return fixed.sort((a, b) => a.name.localeCompare(b.name));
     }
     return cached;
   } catch {
