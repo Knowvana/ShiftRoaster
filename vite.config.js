@@ -9,14 +9,14 @@ import path from 'path';
 // - Base path set for GitHub Pages deployment (supports feature branches)
 // ============================================================================
 
-const base = process.env.VITE_BASE || '/ShiftRoaster/';
+const repoName = 'ShiftRoaster';
+const base = process.env.VITE_BASE ? `/${repoName}${process.env.VITE_BASE}` : `/${repoName}/`;
 
 export default defineConfig({
   plugins: [react()],
 
-  // Base path for GitHub Pages
-  // - Main branch: /ShiftRoaster/
-  // - Feature branches: /feature/branch-name/
+  // Base path for GitHub Pages.
+  // Correctly handles repository name and feature branches.
   base: base,
 
   resolve: {
