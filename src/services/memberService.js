@@ -80,6 +80,7 @@ export function addMember(projectId, memberData) {
     role: (memberData.role || '').trim(),
     memberType: memberData.memberType || 'resource',
     isActive: true,
+    isOnCallEligible: memberData.isOnCallEligible !== undefined ? memberData.isOnCallEligible : false,
     createdAt: new Date().toISOString(),
   };
 
@@ -107,6 +108,7 @@ export function updateMember(projectId, memberId, updates) {
         role: updates.role !== undefined ? updates.role.trim() : member.role,
         memberType: updates.memberType !== undefined ? updates.memberType : (member.memberType || 'resource'),
         isActive: updates.isActive !== undefined ? updates.isActive : member.isActive,
+        isOnCallEligible: updates.isOnCallEligible !== undefined ? updates.isOnCallEligible : (member.isOnCallEligible || false),
       };
       return updatedMember;
     }
@@ -176,6 +178,16 @@ export function getResources(projectId) {
  */
 export function getManagers(projectId) {
   return getMembers(projectId).filter((m) => m.memberType === 'manager');
+}
+
+/**
+ * Get on-call eligible members (active resources with isOnCallEligible = true).
+ * Returns eligible members sorted by name.
+ */
+export function getOnCallEligibleMembers(projectId) {
+  return getMembers(projectId).filter(
+    (m) => m.isActive && (m.memberType || 'resource') === 'resource' && m.isOnCallEligible
+  );
 }
 
 // ---- Internal: Save Members to localStorage ----

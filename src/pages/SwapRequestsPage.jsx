@@ -21,7 +21,7 @@ import {
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
 import { usePermissions } from '@hooks/usePermissions';
-import PageLoader from '@components/common/PageLoader';
+import { useSync } from '@context/SyncContext';
 import Modal from '@components/common/Modal';
 import { getMembers, fetchMembers } from '@services/memberService';
 import { getShifts, fetchShifts } from '@services/shiftService';
@@ -337,7 +337,7 @@ export default function SwapRequestsPage() {
   const [shifts, setShifts] = useState([]);
   const [activeTab, setActiveTab] = useState('pending');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { startSync, stopSync } = useSync();
 
   // ---- Load data: instant from cache, then background refresh ----
   useEffect(() => {
@@ -353,7 +353,7 @@ export default function SwapRequestsPage() {
     setShifts(getShifts(currentProject.id));
 
     // Phase 2: Background refresh from backend
-    setIsSyncing(true);
+    startSync();
     Promise.all([
       fetchSwaps(currentProject.id),
       fetchMembers(currentProject.id),
@@ -362,7 +362,7 @@ export default function SwapRequestsPage() {
       setSwaps(sw);
       setMembers(m.filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource'));
       setShifts(s);
-    }).catch(() => {}).finally(() => setIsSyncing(false));
+    }).catch(() => {}).finally(() => stopSync());
   }, [currentProject]);
 
   const reloadSwaps = () => {
@@ -458,9 +458,6 @@ export default function SwapRequestsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-
-      {/* ---- Background sync indicator (non-blocking) ---- */}
-      {isSyncing && <PageLoader message="Syncing..." />}
 
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

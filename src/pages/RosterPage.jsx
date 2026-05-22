@@ -23,13 +23,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Calendar, ChevronLeft, ChevronRight, Wand2,
-  Trash2, Save, Users, Download, CalendarDays, CalendarRange,
+  Trash2, Save, Users, Download, CalendarDays, CalendarRange, PhoneCall,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
 import { usePermissions } from '@hooks/usePermissions';
 import { useSync } from '@context/SyncContext';
-import PageLoader from '@components/common/PageLoader';
 import { getMembers, fetchMembers } from '@services/memberService';
 import { getShifts, fetchShifts } from '@services/shiftService';
 import {
@@ -41,8 +40,10 @@ import { generateRoster, adjustForLeave } from '@services/rosterEngine';
 import { exportRosterToExcel } from '@utils/exportExcel';
 import {
   getOnCallAssignments, saveOnCallAssignments, fetchOnCallAssignments,
-  syncOnCallAssignments, getOnCallCounts,
+  syncOnCallAssignments, getOnCallCounts, getOnCallConfig, isOnCall,
+  getOnCallMembers, generateOnCallAssignments, saveOnCallConfig,
 } from '@services/onCallService';
+import { getOnCallEligibleMembers } from '@services/memberService';
 import appConfig from '@config/app.json';
 
 // ---- Constants ----
@@ -96,7 +97,7 @@ function ShiftPicker({ shifts, currentCode, onSelect }) {
 }
 
 // ---- Single Roster Cell (used in Weekly + Monthly grids) ----
-function RosterCell({ shiftCode, shiftColor, allShifts, onSelect }) {
+function RosterCell({ shiftCode, shiftColor, allShifts, onSelect, children }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   return (
@@ -113,6 +114,7 @@ function RosterCell({ shiftCode, shiftColor, allShifts, onSelect }) {
       >
         {shiftCode || '—'}
       </button>
+      {children}
       {isPickerOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsPickerOpen(false)} />
@@ -153,15 +155,16 @@ function ShiftLegend({ shifts }) {
 // DAILY VIEW
 // ============================================================================
 
-function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selectedMonth, selectedDay, onCellChange }) {
+function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selectedMonth, selectedDay, onCellChange, onCallAssignments }) {
   const totalDays = getDaysInMonth(selectedYear, selectedMonth);
   const dow = getDayOfWeek(selectedYear, selectedMonth, selectedDay);
   const dayName = getDayName(dow);
   const isWeekend = dow === 0 || dow === 6;
 
-  // Count working / on-leave members for this day
+  // Count working / on-leave / on-call members for this day
   let workingCount = 0;
   let leaveCount = 0;
+  const onCallToday = getOnCallMembers(onCallAssignments || {}, selectedDay);
   for (const member of members) {
     const code = assignments[member.id]?.[String(selectedDay)] || null;
     const shift = code ? shiftMap[code] : null;
@@ -184,6 +187,7 @@ function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selec
         <div className="flex gap-4 text-xs font-medium">
           <span className="text-emerald-600">Working: {workingCount}</span>
           <span className="text-amber-600">Off/Leave: {leaveCount}</span>
+          {onCallToday.length > 0 && <span className="text-violet-600">On-Call: {onCallToday.length}</span>}
         </div>
       </div>
 
@@ -193,6 +197,8 @@ function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selec
           const code = assignments[member.id]?.[String(selectedDay)] || null;
           const shift = code ? shiftMap[code] : null;
 
+          const memberOnCall = onCallToday.includes(member.id);
+
           return (
             <DailyMemberRow
               key={member.id}
@@ -201,6 +207,7 @@ function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selec
               shift={shift}
               allShifts={shifts}
               onSelect={(newCode) => onCellChange(member.id, selectedDay, newCode)}
+              isOnCall={memberOnCall}
             />
           );
         })}
@@ -210,7 +217,7 @@ function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selec
 }
 
 // ---- Single member row in Daily view ----
-function DailyMemberRow({ member, shiftCode, shift, allShifts, onSelect }) {
+function DailyMemberRow({ member, shiftCode, shift, allShifts, onSelect, isOnCall: memberIsOnCall }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   return (
@@ -223,7 +230,14 @@ function DailyMemberRow({ member, shiftCode, shift, allShifts, onSelect }) {
           {member.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-800 truncate">{member.name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-semibold text-slate-800 truncate">{member.name}</p>
+            {memberIsOnCall && (
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 flex-shrink-0">
+                <PhoneCall size={8} /> OC
+              </span>
+            )}
+          </div>
           {member.role && <p className="text-[10px] text-slate-400">{member.role}</p>}
         </div>
       </div>
@@ -258,7 +272,7 @@ function DailyMemberRow({ member, shiftCode, shift, allShifts, onSelect }) {
 // WEEKLY VIEW
 // ============================================================================
 
-function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, selectedMonth, selectedDay, onCellChange }) {
+function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, selectedMonth, selectedDay, onCellChange, onCallAssignments }) {
   const totalDays = getDaysInMonth(selectedYear, selectedMonth);
 
   // Calculate the week (Mon–Sun) containing the selected day
@@ -343,6 +357,32 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
               </tr>
             ))}
 
+            {/* On-Call row */}
+            <tr className="bg-violet-50 border-t border-violet-200">
+              <td className="sticky left-0 z-10 bg-violet-50 px-3 py-2 text-[10px] font-bold text-violet-700 text-left border-r border-violet-200">
+                <span className="flex items-center gap-1"><PhoneCall size={10} /> On-Call</span>
+              </td>
+              {weekDays.map((wd, i) => {
+                if (!wd.isInMonth) return <td key={i} className="border border-violet-100 bg-slate-50" />;
+                const ocMembers = getOnCallMembers(onCallAssignments || {}, wd.day);
+                const count = ocMembers.length;
+                const nameLabels = ocMembers.map((id) => {
+                  const m = members.find((mem) => mem.id === id);
+                  if (!m) return '?';
+                  const parts = m.name.split(' ');
+                  return parts[0].length <= 8 ? parts[0] : (parts[0][0] + (parts[1] ? parts[1][0] : ''));
+                });
+                const fullNames = ocMembers.map((id) => {
+                  const m = members.find((mem) => mem.id === id);
+                  return m ? m.name : '?';
+                }).join(', ');
+                return (
+                  <td key={i} className={`px-1 py-1 text-[9px] font-bold border border-violet-100 text-center ${count > 0 ? 'bg-violet-100 text-violet-700' : 'text-slate-300'}`} title={count > 0 ? fullNames : 'No on-call'}>
+                    {count > 0 ? nameLabels.join(', ') : '\u2014'}
+                  </td>
+                );
+              })}
+            </tr>
             {/* Availability row */}
             <tr className="bg-slate-50 border-t-2 border-slate-300">
               <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-[10px] font-bold text-slate-600 text-left border-r border-slate-200">
@@ -441,7 +481,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
         if (code === 'WO') woCount++;
         else if (code && !shiftMap[code]?.isWorkingShift) leaveCount++;
         else if (code && shiftMap[code]?.isWorkingShift) shiftCount++;
-        if (onCallAssignments[member.id]?.[dayStr]) onCallCount++;
+        if (isOnCall(onCallAssignments, member.id, day)) onCallCount++;
       }
       summary[member.id] = { woCount, leaveCount, shiftCount, onCallCount };
     }
@@ -489,6 +529,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                 {dayHeaders.map(({ day }) => {
                   const code = assignments[member.id]?.[String(day)] || null;
                   const shiftObj = code ? shiftMap[code] : null;
+                  const memberOnCallToday = isOnCall(onCallAssignments, member.id, day);
                   return (
                     <RosterCell
                       key={`${member.id}_${day}`}
@@ -496,7 +537,13 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                       shiftColor={shiftObj ? shiftObj.color : null}
                       allShifts={shifts}
                       onSelect={(c) => onCellChange(member.id, day, c)}
-                    />
+                    >
+                      {memberOnCallToday && (
+                        <span className="absolute top-0 right-0 w-2.5 h-2.5 bg-violet-500 rounded-full ring-1 ring-white flex items-center justify-center" title="On-Call">
+                          <PhoneCall size={6} className="text-white" />
+                        </span>
+                      )}
+                    </RosterCell>
                   );
                 })}
                 <td className="px-2 py-1 text-[8px] text-slate-600 border-l border-b border-slate-100 text-left whitespace-nowrap">
@@ -520,26 +567,39 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
               </tr>
             ))}
             {/* On-Call row */}
-            <tr className="bg-gradient-to-r from-purple-50 to-pink-50 border-t border-purple-200">
-              <td className="sticky left-0 z-10 bg-gradient-to-r from-purple-50 to-pink-50 px-3 py-2 text-[10px] font-bold text-purple-700 text-left border-r border-purple-200 uppercase tracking-wide">
-                📞 On-Call
+            <tr className="bg-gradient-to-r from-violet-50 to-purple-50 border-t border-violet-200">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-violet-50 to-purple-50 px-3 py-2 text-[10px] font-bold text-violet-700 text-left border-r border-violet-200 uppercase tracking-wide">
+                <span className="flex items-center gap-1"><PhoneCall size={10} /> On-Call</span>
               </td>
               {dayHeaders.map(({ day }) => {
-                let weekdayCount = 0, weekendCount = 0;
-                for (const [memberId, days] of Object.entries(onCallAssignments)) {
-                  const type = days[String(day)];
-                  if (type === 'weekday') weekdayCount++;
-                  else if (type === 'weekend') weekendCount++;
-                }
-                const hasOnCall = weekdayCount > 0 || weekendCount > 0;
+                const ocMembers = getOnCallMembers(onCallAssignments, day);
+                const count = ocMembers.length;
+                // Resolve names (first name if short, otherwise initials)
+                const nameLabels = ocMembers.map((id) => {
+                  const m = members.find((mem) => mem.id === id);
+                  if (!m) return '?';
+                  const parts = m.name.split(' ');
+                  return parts[0].length <= 6 ? parts[0] : (parts[0][0] + (parts[1] ? parts[1][0] : ''));
+                });
+                const fullNames = ocMembers.map((id) => {
+                  const m = members.find((mem) => mem.id === id);
+                  return m ? m.name : '?';
+                }).join(', ');
                 return (
-                  <td key={day} className={`px-0 py-2 text-[10px] font-bold border border-purple-100 text-center transition-colors ${hasOnCall ? 'bg-purple-100 text-purple-700' : 'bg-slate-50 text-slate-300'}`}>
-                    {weekdayCount > 0 && <div>WD:{weekdayCount}</div>}
-                    {weekendCount > 0 && <div>WE:{weekendCount}</div>}
+                  <td
+                    key={day}
+                    className={`px-0 py-1 text-[8px] font-bold border border-violet-100 text-center transition-colors leading-tight ${count > 0 ? 'bg-violet-100 text-violet-700' : 'bg-slate-50 text-slate-300'}`}
+                    title={count > 0 ? fullNames : 'No on-call'}
+                  >
+                    {count > 0 ? (
+                      <div className="flex flex-col items-center gap-0">
+                        {nameLabels.map((n, i) => <span key={i}>{n}</span>)}
+                      </div>
+                    ) : '—'}
                   </td>
                 );
               })}
-              <td className="px-2 py-2 border-l border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50" />
+              <td className="px-2 py-2 border-l border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50" />
             </tr>
             {/* Daily availability row */}
             <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-t-2 border-emerald-200">
@@ -702,7 +762,23 @@ export default function RosterPage() {
     const generated = generateRoster(members, shifts, selectedYear, selectedMonth, appConfig.rosterRules || {}, assignments);
     setAssignments(generated);
     setHasUnsavedChanges(true);
-    showToast('Roster generated! Review and save.', 'success');
+
+    // Also generate on-call assignments if enabled
+    const ocConfig = getOnCallConfig(currentProject.id);
+    if (ocConfig.enabled) {
+      const eligible = getOnCallEligibleMembers(currentProject.id);
+      if (eligible.length > 0) {
+        const ocGenerated = generateOnCallAssignments(eligible, selectedYear, selectedMonth, ocConfig);
+        setOnCallAssignments(ocGenerated);
+        saveOnCallAssignments(currentProject.id, selectedYear, selectedMonth, ocGenerated);
+        syncOnCallAssignments(currentProject.id, selectedYear, selectedMonth, ocGenerated);
+        showToast(`Roster + on-call generated for ${eligible.length} eligible members!`, 'success');
+      } else {
+        showToast('Roster generated! On-call skipped — no eligible members.', 'success');
+      }
+    } else {
+      showToast('Roster generated! Review and save.', 'success');
+    }
   };
 
   const handleSave = () => {
@@ -729,6 +805,21 @@ export default function RosterPage() {
     if (Object.keys(assignments).length === 0) { showToast('Nothing to export', 'error'); return; }
     exportRosterToExcel(currentProject.name, members, shifts, assignments, selectedYear, selectedMonth);
     showToast('Excel file downloaded!', 'success');
+  };
+
+  const handleGenerateOnCall = () => {
+    const config = getOnCallConfig(currentProject.id);
+    if (!config.enabled) { showToast('Enable on-call in Shifts page first', 'error'); return; }
+    const eligible = getOnCallEligibleMembers(currentProject.id);
+    if (eligible.length === 0) { showToast('No eligible on-call members. Mark members as eligible in Members page.', 'error'); return; }
+    const hasExisting = Object.keys(onCallAssignments).length > 0;
+    const confirmed = hasExisting ? window.confirm('This will replace the current on-call schedule. Continue?') : true;
+    if (!confirmed) return;
+    const generated = generateOnCallAssignments(eligible, selectedYear, selectedMonth, config);
+    setOnCallAssignments(generated);
+    saveOnCallAssignments(currentProject.id, selectedYear, selectedMonth, generated);
+    syncOnCallAssignments(currentProject.id, selectedYear, selectedMonth, generated);
+    showToast(`On-call generated for ${eligible.length} eligible members!`, 'success');
   };
 
   // ---- No project state ----
@@ -808,6 +899,11 @@ export default function RosterPage() {
             <Download size={14} /> Export
           </button>
           {canEdit && (
+            <button onClick={handleGenerateOnCall} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-violet-600 text-white hover:bg-violet-700 transition-colors">
+              <PhoneCall size={14} /> On-Call
+            </button>
+          )}
+          {canEdit && (
             <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors">
               <Trash2 size={14} /> Clear
             </button>
@@ -860,6 +956,7 @@ export default function RosterPage() {
           assignments={assignments} selectedYear={selectedYear}
           selectedMonth={selectedMonth} selectedDay={selectedDay}
           onCellChange={canEdit ? handleCellChange : undefined}
+          onCallAssignments={onCallAssignments}
         />
       )}
 
@@ -869,6 +966,7 @@ export default function RosterPage() {
           assignments={assignments} selectedYear={selectedYear}
           selectedMonth={selectedMonth} selectedDay={selectedDay}
           onCellChange={canEdit ? handleCellChange : undefined}
+          onCallAssignments={onCallAssignments}
         />
       )}
 

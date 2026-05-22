@@ -19,7 +19,7 @@ import {
   Calendar, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
-import PageLoader from '@components/common/PageLoader';
+import { useSync } from '@context/SyncContext';
 import { getMembers, fetchMembers } from '@services/memberService';
 import { getShifts, fetchShifts } from '@services/shiftService';
 import { getRoster, fetchRoster, getDayOfWeek, getDayName } from '@services/rosterService';
@@ -106,7 +106,7 @@ function buildDashboardData(allMembers, shifts, roster, swaps) {
 export default function DashboardPage() {
   const { currentProject } = useProject();
   const [dashboardData, setDashboardData] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { startSync, stopSync } = useSync();
 
   // ---- Phase 1: Instant load from localStorage cache ----
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function DashboardPage() {
     setDashboardData(cachedData);
 
     // ---- Phase 2: Background refresh from backend ----
-    setIsSyncing(true);
+    startSync();
     Promise.all([
       fetchMembers(currentProject.id),
       fetchShifts(currentProject.id),
@@ -135,7 +135,7 @@ export default function DashboardPage() {
       setDashboardData(buildDashboardData(members, shifts, roster, swaps));
     }).catch(() => {
       // Keep cached data on error
-    }).finally(() => setIsSyncing(false));
+    }).finally(() => stopSync());
   }, [currentProject]);
 
   // ---- No Project State ----
@@ -164,9 +164,6 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-
-      {/* ---- Background sync indicator (non-blocking) ---- */}
-      {isSyncing && <PageLoader message="Syncing..." />}
 
       {/* ---- Page Header ---- */}
       <div>

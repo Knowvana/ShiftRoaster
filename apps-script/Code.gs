@@ -18,10 +18,13 @@
  *   _projects          — project list (id, name, description, createdAt)
  *   _admins            — admin accounts (username, passwordHash, displayName, role, projectIds)
  *   _config            — app-level config (key, value)
- *   _members_{projId}  — team members for a project
+ *   _members_{projId}  — team members for a project (includes isOnCallEligible)
  *   _shifts_{projId}   — shift definitions for a project
  *   _swaps_{projId}    — swap requests for a project
  *   _roster_{projId}_{YYYY}_{MM} — raw roster JSON data
+ *   _oncallconfig_{projId} — on-call config (enabled, resourcesPerDay, rotationPeriodDays)
+ *   _oncall_{projId}_{YYYY}_{MM} — on-call assignments (day → [memberIds])
+ *   _emailconfig_{projId} — email notification config
  *   {Month YYYY}_{projId} — formatted roster sheet (human-readable)
  *
  * API FORMAT:
@@ -94,6 +97,17 @@ function doGet(e) {
       // ---- Email Config ----
       case 'getEmailConfig':
         return jsonResponse({ success: true, data: getEmailConfig(params.projectId) });
+
+      // ---- On-Call Config ----
+      case 'getOnCallConfig':
+        return jsonResponse({ success: true, data: getOnCallConfigData(params.projectId) });
+
+      // ---- On-Call Assignments ----
+      case 'getOnCallAssignments':
+        return jsonResponse({
+          success: true,
+          data: getOnCallAssignmentsData(params.projectId, Number(params.year), Number(params.month))
+        });
 
       // ---- Health check ----
       case 'ping':
@@ -192,6 +206,16 @@ function doPost(e) {
       case 'sendTestEmail':
         var testResult = sendTestEmail(body.projectId, body.emailType, body.recipientEmail);
         return jsonResponse(testResult);
+
+      // ---- On-Call Config ----
+      case 'syncOnCallConfig':
+        saveOnCallConfigData(body.projectId, body.config);
+        return jsonResponse({ success: true });
+
+      // ---- On-Call Assignments ----
+      case 'syncOnCallAssignments':
+        saveOnCallAssignmentsData(body.projectId, Number(body.year), Number(body.month), body.assignments);
+        return jsonResponse({ success: true });
 
       default:
         return jsonResponse({ success: false, error: 'Unknown action: ' + action });
@@ -444,7 +468,7 @@ function getMembers(projectId) {
 function saveMembers(projectId, membersArray) {
   if (!projectId) return;
   writeSheetData('_members_' + projectId, membersArray,
-    ['id', 'name', 'email', 'phone', 'role', 'memberType', 'isActive', 'createdAt']);
+    ['id', 'name', 'email', 'phone', 'role', 'memberType', 'isActive', 'isOnCallEligible', 'createdAt']);
 }
 
 // ============================================================================
@@ -564,6 +588,51 @@ function getEmailConfig(projectId) {
 function saveEmailConfig(projectId, configData) {
   if (!projectId) return;
   writeJsonSheet('_emailconfig_' + projectId, configData);
+}
+
+// ============================================================================
+// ON-CALL CONFIG (per project — JSON blob in a sheet)
+// ============================================================================
+
+/**
+ * Get on-call configuration for a project.
+ * Returns: { enabled, resourcesPerDay, rotationPeriodDays }
+ */
+function getOnCallConfigData(projectId) {
+  if (!projectId) return {};
+  return readJsonSheet('_oncallconfig_' + projectId) || {};
+}
+
+/**
+ * Save on-call configuration for a project.
+ */
+function saveOnCallConfigData(projectId, configData) {
+  if (!projectId) return;
+  writeJsonSheet('_oncallconfig_' + projectId, configData);
+}
+
+// ============================================================================
+// ON-CALL ASSIGNMENTS (per project/month — JSON blob in a sheet)
+// ============================================================================
+
+/**
+ * Get on-call assignments for a specific month.
+ * Returns: { '1': [memberId1, memberId2], '2': [...], ... }
+ * Each key is a day number, value is array of on-call member IDs.
+ */
+function getOnCallAssignmentsData(projectId, year, month) {
+  if (!projectId || !year || !month) return {};
+  var sheetName = '_oncall_' + projectId + '_' + year + '_' + String(month).padStart(2, '0');
+  return readJsonSheet(sheetName) || {};
+}
+
+/**
+ * Save on-call assignments for a specific month.
+ */
+function saveOnCallAssignmentsData(projectId, year, month, assignments) {
+  if (!projectId || !year || !month) return;
+  var sheetName = '_oncall_' + projectId + '_' + year + '_' + String(month).padStart(2, '0');
+  writeJsonSheet(sheetName, assignments || {});
 }
 
 // ============================================================================

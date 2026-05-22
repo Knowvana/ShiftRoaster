@@ -17,12 +17,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users, Plus, Pencil, Trash2, Search,
-  UserCheck, UserX, X, Check, AlertCircle, UserCog, Briefcase,
+  UserCheck, UserX, X, Check, AlertCircle, UserCog, Briefcase, PhoneCall,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
 import { usePermissions } from '@hooks/usePermissions';
-import PageLoader from '@components/common/PageLoader';
+import { useSync } from '@context/SyncContext';
 import Modal from '@components/common/Modal';
 import {
   getMembers,
@@ -43,6 +43,7 @@ const EMPTY_FORM = {
   phone: '',
   role: '',
   memberType: 'resource',
+  isOnCallEligible: false,
 };
 
 // ---- Member Form Component ----
@@ -148,6 +149,27 @@ function MemberForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
         />
       </div>
 
+      {/* On-Call Eligibility (only for resources) */}
+      {formData.memberType === 'resource' && (
+        <div className="flex items-center justify-between py-2 px-3 rounded-lg bg-slate-50 border border-slate-200">
+          <div>
+            <p className="text-sm font-medium text-slate-700">On-Call Eligible</p>
+            <p className="text-xs text-slate-400">Include in on-call rotation pool</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => onChange({ ...formData, isOnCallEligible: !formData.isOnCallEligible })}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+              ${formData.isOnCallEligible ? 'bg-violet-600' : 'bg-slate-300'}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform shadow-sm
+                ${formData.isOnCallEligible ? 'translate-x-6' : 'translate-x-1'}`}
+            />
+          </button>
+        </div>
+      )}
+
       {/* Action buttons in modal footer area */}
       <div className="flex justify-end gap-3 pt-2">
         <button
@@ -186,7 +208,7 @@ export default function MembersPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null); // null = not editing
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { startSync, stopSync } = useSync();
 
   // ---- Load members: instant from cache, then background refresh ----
   useEffect(() => {
@@ -194,11 +216,11 @@ export default function MembersPage() {
       // Phase 1: Instant from localStorage
       setMembers(getMembers(currentProject.id));
       // Phase 2: Background refresh from backend
-      setIsSyncing(true);
+      startSync();
       fetchMembers(currentProject.id)
         .then((data) => setMembers(data))
         .catch(() => {})
-        .finally(() => setIsSyncing(false));
+        .finally(() => stopSync());
     } else {
       setMembers([]);
     }
@@ -244,6 +266,7 @@ export default function MembersPage() {
       phone: member.phone || '',
       role: member.role || '',
       memberType: member.memberType || 'resource',
+      isOnCallEligible: member.isOnCallEligible || false,
     });
     setEditingMember(member);
     setIsAddModalOpen(true);
@@ -294,6 +317,17 @@ export default function MembersPage() {
     reloadMembers();
   };
 
+  /** Toggle a member's on-call eligibility */
+  const handleToggleOnCall = (member) => {
+    const newStatus = !member.isOnCallEligible;
+    updateMember(currentProject.id, member.id, { isOnCallEligible: newStatus });
+    showToast(
+      `${member.name} is now ${newStatus ? 'eligible' : 'not eligible'} for on-call`,
+      newStatus ? 'success' : 'info'
+    );
+    reloadMembers();
+  };
+
   // ---- No project state ----
 
   // ---- No Project Selected State ----
@@ -314,12 +348,10 @@ export default function MembersPage() {
   const inactiveCount = members.filter((m) => !m.isActive).length;
   const resourceCount = members.filter((m) => (m.memberType || 'resource') === 'resource').length;
   const managerCount = members.filter((m) => m.memberType === 'manager').length;
+  const onCallEligibleCount = members.filter((m) => m.isOnCallEligible).length;
 
   return (
     <div className="space-y-6 animate-fade-in">
-
-      {/* ---- Background sync indicator (non-blocking) ---- */}
-      {isSyncing && <PageLoader message="Syncing..." />}
 
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -390,6 +422,9 @@ export default function MembersPage() {
                   </th>
                   <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                     Status
+                  </th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider hidden lg:table-cell">
+                    On-Call
                   </th>
                   {canEdit && (
                     <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
@@ -473,6 +508,43 @@ export default function MembersPage() {
                             <><UserX size={12} /> Inactive</>
                           )}
                         </span>
+                      )}
+                    </td>
+
+                    {/* On-Call Eligibility toggle */}
+                    <td className="px-4 py-3 text-center hidden lg:table-cell">
+                      {(member.memberType || 'resource') === 'resource' ? (
+                        canEdit ? (
+                          <button
+                            onClick={() => handleToggleOnCall(member)}
+                            className="inline-flex items-center gap-2 cursor-pointer group"
+                            title={`Click to ${member.isOnCallEligible ? 'remove from' : 'add to'} on-call pool`}
+                          >
+                            {/* Toggle switch */}
+                            <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors
+                              ${member.isOnCallEligible ? 'bg-violet-600' : 'bg-slate-300 group-hover:bg-slate-400'}`}
+                            >
+                              <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform shadow-sm
+                                ${member.isOnCallEligible ? 'translate-x-[18px]' : 'translate-x-[3px]'}`}
+                              />
+                            </div>
+                            <span className={`text-xs font-medium ${member.isOnCallEligible ? 'text-violet-700' : 'text-slate-400'}`}>
+                              {member.isOnCallEligible ? 'Eligible' : 'Not Eligible'}
+                            </span>
+                          </button>
+                        ) : (
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
+                            ${member.isOnCallEligible
+                              ? 'bg-violet-50 text-violet-700'
+                              : 'bg-slate-100 text-slate-400'
+                            }`}
+                          >
+                            <PhoneCall size={12} />
+                            {member.isOnCallEligible ? 'Eligible' : 'Not Eligible'}
+                          </span>
+                        )
+                      ) : (
+                        <span className="text-slate-300 text-xs">N/A</span>
                       )}
                     </td>
 

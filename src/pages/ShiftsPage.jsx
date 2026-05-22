@@ -17,12 +17,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Clock, Plus, Pencil, Trash2, RotateCcw,
-  Check, X, Briefcase, Coffee,
+  Check, X, Briefcase, Coffee, PhoneCall, Minus,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
 import { usePermissions } from '@hooks/usePermissions';
-import PageLoader from '@components/common/PageLoader';
+import { useSync } from '@context/SyncContext';
 import Modal from '@components/common/Modal';
 import {
   getShifts,
@@ -33,6 +33,13 @@ import {
   fetchShifts,
   syncShifts,
 } from '@services/shiftService';
+import {
+  getOnCallConfig,
+  saveOnCallConfig,
+  fetchOnCallConfig,
+  syncOnCallConfig,
+} from '@services/onCallService';
+import { getOnCallEligibleMembers } from '@services/memberService';
 
 // ---- Preset Color Palette ----
 // A curated set of colors for the shift color picker
@@ -340,23 +347,45 @@ export default function ShiftsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingShift, setEditingShift] = useState(null);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
-  const [isSyncing, setIsSyncing] = useState(false);
+  const [onCallConfig, setOnCallConfig] = useState({ resourcesPerDay: 1, rotationPeriodDays: 7, enabled: false });
+  const [eligibleCount, setEligibleCount] = useState(0);
+  const { startSync, stopSync } = useSync();
 
-  // ---- Load shifts: instant from cache, then background refresh ----
+  // ---- Load shifts + on-call config: instant from cache, then background refresh ----
   useEffect(() => {
     if (currentProject) {
       // Phase 1: Instant from localStorage
       setShifts(getShifts(currentProject.id));
+      setOnCallConfig(getOnCallConfig(currentProject.id));
+      setEligibleCount(getOnCallEligibleMembers(currentProject.id).length);
       // Phase 2: Background refresh from backend
-      setIsSyncing(true);
-      fetchShifts(currentProject.id)
-        .then((data) => setShifts(data))
+      startSync();
+      Promise.all([
+        fetchShifts(currentProject.id),
+        fetchOnCallConfig(currentProject.id),
+      ])
+        .then(([shiftsData, configData]) => {
+          setShifts(shiftsData);
+          setOnCallConfig(configData);
+        })
         .catch(() => {})
-        .finally(() => setIsSyncing(false));
+        .finally(() => stopSync());
     } else {
       setShifts([]);
+      setOnCallConfig({ resourcesPerDay: 1, rotationPeriodDays: 7, enabled: false });
+      setEligibleCount(0);
     }
   }, [currentProject]);
+
+  // ---- Re-read eligible count from localStorage on every render ----
+  // This ensures the count is always fresh when navigating back from Members page.
+  // useMemo re-computes whenever members change in localStorage (read on each render).
+  const liveEligibleCount = currentProject
+    ? getOnCallEligibleMembers(currentProject.id).length
+    : 0;
+  if (liveEligibleCount !== eligibleCount) {
+    setEligibleCount(liveEligibleCount);
+  }
 
   // ---- Reload from storage and sync to backend ----
   const reloadShifts = () => {
@@ -432,6 +461,35 @@ export default function ShiftsPage() {
     }
   };
 
+  // ---- On-Call Config Handlers ----
+
+  /** Toggle on-call enabled */
+  const handleToggleOnCall = () => {
+    const updated = { ...onCallConfig, enabled: !onCallConfig.enabled };
+    setOnCallConfig(updated);
+    saveOnCallConfig(currentProject.id, updated);
+    syncOnCallConfig(currentProject.id, updated);
+    showToast(updated.enabled ? 'On-call enabled' : 'On-call disabled', 'info');
+  };
+
+  /** Update resources per day */
+  const handleResourcesChange = (delta) => {
+    const newVal = Math.max(1, Math.min(10, onCallConfig.resourcesPerDay + delta));
+    const updated = { ...onCallConfig, resourcesPerDay: newVal };
+    setOnCallConfig(updated);
+    saveOnCallConfig(currentProject.id, updated);
+    syncOnCallConfig(currentProject.id, updated);
+  };
+
+  /** Update rotation period */
+  const handleRotationChange = (e) => {
+    const val = parseInt(e.target.value, 10) || 7;
+    const updated = { ...onCallConfig, rotationPeriodDays: Math.max(1, Math.min(30, val)) };
+    setOnCallConfig(updated);
+    saveOnCallConfig(currentProject.id, updated);
+    syncOnCallConfig(currentProject.id, updated);
+  };
+
   /** Reset all shifts to defaults */
   const handleResetDefaults = () => {
     const confirmed = window.confirm(
@@ -465,9 +523,6 @@ export default function ShiftsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-
-      {/* ---- Background sync indicator (non-blocking) ---- */}
-      {isSyncing && <PageLoader message="Syncing..." />}
 
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -543,6 +598,95 @@ export default function ShiftsPage() {
           </div>
         </div>
       )}
+
+      {/* ---- On-Call Configuration Section ---- */}
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-violet-100 flex items-center justify-center">
+              <PhoneCall size={16} className="text-violet-600" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">On-Call Configuration</h2>
+              <p className="text-xs text-slate-400">Configure on-call rotation for this project</p>
+            </div>
+          </div>
+          {canEdit && (
+            <button
+              onClick={handleToggleOnCall}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                ${onCallConfig.enabled ? 'bg-violet-600' : 'bg-slate-300'}`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform
+                  ${onCallConfig.enabled ? 'translate-x-6' : 'translate-x-1'}`}
+              />
+            </button>
+          )}
+        </div>
+
+        {onCallConfig.enabled && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100">
+            {/* Resources per day */}
+            <div>
+              <label className="field-label">Resources Per Day</label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleResourcesChange(-1)}
+                  disabled={!canEdit || onCallConfig.resourcesPerDay <= 1}
+                  className="w-8 h-8 rounded-lg border border-slate-300 flex items-center justify-center
+                             text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Minus size={14} />
+                </button>
+                <span className="w-10 text-center text-lg font-bold text-slate-800">
+                  {onCallConfig.resourcesPerDay}
+                </span>
+                <button
+                  onClick={() => handleResourcesChange(1)}
+                  disabled={!canEdit || onCallConfig.resourcesPerDay >= 10}
+                  className="w-8 h-8 rounded-lg border border-slate-300 flex items-center justify-center
+                             text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-400 mt-1">How many people on-call each day</p>
+            </div>
+
+            {/* Rotation period */}
+            <div>
+              <label className="field-label">Rotation Period (days)</label>
+              <input
+                type="number"
+                value={onCallConfig.rotationPeriodDays}
+                onChange={handleRotationChange}
+                min={1}
+                max={30}
+                disabled={!canEdit}
+                className="input-field w-24"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">Days before rotating to next group</p>
+            </div>
+
+            {/* Eligible members info */}
+            <div>
+              <label className="field-label">Eligible Members</label>
+              <div className="flex items-center gap-2 mt-1">
+                <span className={`text-lg font-bold ${eligibleCount > 0 ? 'text-violet-600' : 'text-rose-500'}`}>
+                  {eligibleCount}
+                </span>
+                <span className="text-xs text-slate-400">members in on-call pool</span>
+              </div>
+              {eligibleCount === 0 && (
+                <p className="text-[10px] text-rose-400 mt-1">
+                  Go to Members page to mark members as on-call eligible
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ---- Empty State ---- */}
       {shifts.length === 0 && (
