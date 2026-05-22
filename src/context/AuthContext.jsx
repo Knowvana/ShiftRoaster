@@ -2,10 +2,15 @@
  * ============================================================================
  * AuthContext.jsx — Authentication State Management
  * 
- * Manages admin login/logout state using static credentials.
+ * Manages login/logout state using hashed credentials.
  * Passwords are stored as SHA-256 hashes (not plain text).
- * Session is persisted in localStorage so admins stay logged in
+ * Session is persisted in localStorage so users stay logged in
  * across browser refreshes.
+ * 
+ * Roles:
+ *   - site_admin: Full access to all projects and settings
+ *   - project_admin: Can edit assigned projects (members, shifts, roster)
+ *   - resource: Read-only access to assigned projects
  * 
  * Usage:
  *   const { isLoggedIn, currentUser, login, logout } = useAuth();
@@ -14,6 +19,7 @@
 
 import React, { createContext, useState, useCallback, useEffect } from 'react';
 import CryptoJS from 'crypto-js';
+import { isBackendConfigured, apiGet, apiPost } from '@services/apiClient';
 
 // Create the context
 export const AuthContext = createContext(null);
@@ -30,7 +36,8 @@ const DEFAULT_ADMINS = [
     username: 'admin',
     passwordHash: CryptoJS.SHA256('admin123').toString(),
     displayName: 'Administrator',
-    role: 'super_admin',
+    role: 'site_admin',
+    projectIds: [], // site_admin sees all projects regardless
   },
 ];
 
@@ -81,17 +88,33 @@ export function AuthProvider({ children }) {
   const [admins, setAdmins] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // On mount: load admins list and restore session
+  // On mount: load admins from backend (or localStorage fallback) and restore session
   useEffect(() => {
-    const adminList = loadAdmins();
-    setAdmins(adminList);
+    async function init() {
+      let adminList = loadAdmins();
 
-    const savedSession = loadSession();
-    if (savedSession) {
-      setCurrentUser(savedSession);
+      if (isBackendConfigured()) {
+        try {
+          const res = await apiGet('getAdmins');
+          if (res.data && res.data.length > 0) {
+            adminList = res.data;
+            localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(adminList));
+          }
+        } catch (err) {
+          console.warn('[AuthContext] Backend fetch failed, using localStorage:', err.message);
+        }
+      }
+
+      setAdmins(adminList);
+
+      const savedSession = loadSession();
+      if (savedSession) {
+        setCurrentUser(savedSession);
+      }
+
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
+    init();
   }, []);
 
   /**
@@ -116,6 +139,7 @@ export function AuthProvider({ children }) {
       username: matchingAdmin.username,
       displayName: matchingAdmin.displayName,
       role: matchingAdmin.role,
+      projectIds: matchingAdmin.projectIds || [],
       loggedInAt: new Date().toISOString(),
     };
 
@@ -138,7 +162,7 @@ export function AuthProvider({ children }) {
    * Add a new admin account.
    * Returns { success: true } or { success: false, message: '...' }
    */
-  const addAdmin = useCallback((username, password, displayName) => {
+  const addAdmin = useCallback((username, password, displayName, role = 'resource', projectIds = []) => {
     // Check if username already exists
     const exists = admins.some((admin) => admin.username === username);
     if (exists) {
@@ -149,19 +173,56 @@ export function AuthProvider({ children }) {
       username,
       passwordHash: CryptoJS.SHA256(password).toString(),
       displayName,
-      role: 'admin',
+      role,
+      projectIds,
     };
 
     const updatedAdmins = [...admins, newAdmin];
     localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(updatedAdmins));
     setAdmins(updatedAdmins);
 
+    // Sync to backend
+    if (isBackendConfigured()) {
+      apiPost('saveAdmins', { data: updatedAdmins }).catch((err) =>
+        console.warn('[AuthContext] Failed to sync admins:', err.message)
+      );
+    }
+
+    return { success: true };
+  }, [admins]);
+
+  /**
+   * Update an admin's role and project assignments.
+   */
+  const updateAdmin = useCallback((username, updates) => {
+    const updatedAdmins = admins.map((admin) => {
+      if (admin.username === username) {
+        return {
+          ...admin,
+          ...(updates.displayName !== undefined && { displayName: updates.displayName }),
+          ...(updates.role !== undefined && { role: updates.role }),
+          ...(updates.projectIds !== undefined && { projectIds: updates.projectIds }),
+        };
+      }
+      return admin;
+    });
+
+    localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(updatedAdmins));
+    setAdmins(updatedAdmins);
+
+    // Sync to backend
+    if (isBackendConfigured()) {
+      apiPost('saveAdmins', { data: updatedAdmins }).catch((err) =>
+        console.warn('[AuthContext] Failed to sync admins:', err.message)
+      );
+    }
+
     return { success: true };
   }, [admins]);
 
   /**
    * Remove an admin account by username.
-   * Cannot remove the last super_admin.
+   * Cannot remove the last site_admin.
    */
   const removeAdmin = useCallback((username) => {
     const targetAdmin = admins.find((a) => a.username === username);
@@ -170,17 +231,24 @@ export function AuthProvider({ children }) {
       return { success: false, message: 'Admin not found' };
     }
 
-    // Prevent removing the last super admin
-    if (targetAdmin.role === 'super_admin') {
-      const superAdminCount = admins.filter((a) => a.role === 'super_admin').length;
-      if (superAdminCount <= 1) {
-        return { success: false, message: 'Cannot remove the last super admin' };
+    // Prevent removing the last site admin
+    if (targetAdmin.role === 'site_admin' || targetAdmin.role === 'super_admin') {
+      const siteAdminCount = admins.filter((a) => a.role === 'site_admin' || a.role === 'super_admin').length;
+      if (siteAdminCount <= 1) {
+        return { success: false, message: 'Cannot remove the last site admin' };
       }
     }
 
     const updatedAdmins = admins.filter((a) => a.username !== username);
     localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(updatedAdmins));
     setAdmins(updatedAdmins);
+
+    // Sync to backend
+    if (isBackendConfigured()) {
+      apiPost('saveAdmins', { data: updatedAdmins }).catch((err) =>
+        console.warn('[AuthContext] Failed to sync admins:', err.message)
+      );
+    }
 
     return { success: true };
   }, [admins]);
@@ -199,6 +267,13 @@ export function AuthProvider({ children }) {
     localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(updatedAdmins));
     setAdmins(updatedAdmins);
 
+    // Sync to backend
+    if (isBackendConfigured()) {
+      apiPost('saveAdmins', { data: updatedAdmins }).catch((err) =>
+        console.warn('[AuthContext] Failed to sync admins:', err.message)
+      );
+    }
+
     return { success: true };
   }, [admins]);
 
@@ -211,6 +286,7 @@ export function AuthProvider({ children }) {
     login,
     logout,
     addAdmin,
+    updateAdmin,
     removeAdmin,
     changePassword,
   };

@@ -22,6 +22,7 @@
  */
 
 import appConfig from '@config/app.json';
+import { isBackendConfigured, apiGet, apiPost } from '@services/apiClient';
 
 // ---- Storage Key Helper ----
 function getStorageKey(projectId) {
@@ -199,6 +200,50 @@ export function resetToDefaults(projectId) {
 function saveShifts(projectId, shifts) {
   const key = getStorageKey(projectId);
   localStorage.setItem(key, JSON.stringify(shifts));
+}
+
+// ============================================================================
+// ASYNC API-BACKED FUNCTIONS (for Google Sheets backend)
+// ============================================================================
+
+/**
+ * Fetch shifts from backend (or localStorage if offline).
+ */
+export async function fetchShifts(projectId) {
+  if (!isBackendConfigured()) return getShifts(projectId);
+  try {
+    const res = await apiGet('getShifts', { projectId });
+    const shifts = res.data || [];
+    if (shifts.length === 0) {
+      // First time — load defaults and push to backend
+      const defaults = loadDefaults(projectId);
+      apiPost('saveShifts', { projectId, data: defaults }).catch(() => {});
+      return defaults;
+    }
+    // Fix boolean parsing (Sheets may return strings)
+    const fixed = shifts.map(s => ({
+      ...s,
+      isWorkingShift: s.isWorkingShift === true || s.isWorkingShift === 'true' || s.isWorkingShift === 'TRUE',
+      order: Number(s.order) || 0,
+    }));
+    saveShifts(projectId, fixed);
+    return fixed.sort((a, b) => a.order - b.order);
+  } catch {
+    return getShifts(projectId);
+  }
+}
+
+/**
+ * Save shifts to backend (and localStorage cache).
+ */
+export async function syncShifts(projectId, shifts) {
+  saveShifts(projectId, shifts);
+  if (!isBackendConfigured()) return;
+  try {
+    await apiPost('saveShifts', { projectId, data: shifts });
+  } catch (err) {
+    console.warn('[shiftService] Failed to sync to backend:', err.message);
+  }
 }
 
 /** Load default shifts from app config and save to storage */

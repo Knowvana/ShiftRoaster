@@ -11,7 +11,9 @@
  * ============================================================================
  */
 
-import React, { createContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useState, useCallback, useEffect, useMemo, useContext } from 'react';
+import { isBackendConfigured, apiGet, apiPost } from '@services/apiClient';
+import { AuthContext } from '@context/AuthContext';
 
 // Create the context
 export const ProjectContext = createContext(null);
@@ -59,22 +61,43 @@ export function ProjectProvider({ children }) {
   const [projects, setProjects] = useState([]);
   const [currentProject, setCurrentProject] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const authContext = useContext(AuthContext);
+  const currentUser = authContext?.currentUser;
 
-  // On mount: load projects and restore the last selected project
+  // On mount: load projects from backend (or localStorage fallback)
   useEffect(() => {
-    const allProjects = loadProjects();
-    setProjects(allProjects);
+    async function init() {
+      let allProjects = loadProjects(); // Start with local cache
 
-    // Try to restore the last selected project
-    const savedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT);
-    if (savedCurrentId && allProjects.length > 0) {
-      const found = allProjects.find((p) => p.id === savedCurrentId);
-      setCurrentProject(found || allProjects[0]);
-    } else if (allProjects.length > 0) {
-      setCurrentProject(allProjects[0]);
+      if (isBackendConfigured()) {
+        try {
+          const res = await apiGet('getProjects');
+          if (res.data && res.data.length > 0) {
+            allProjects = res.data;
+            saveProjects(allProjects); // Update local cache
+          } else if (allProjects.length > 0) {
+            // Backend is empty but local has data — push local to backend
+            await apiPost('saveProjects', { data: allProjects });
+          }
+        } catch (err) {
+          console.warn('[ProjectContext] Backend fetch failed, using localStorage:', err.message);
+        }
+      }
+
+      setProjects(allProjects);
+
+      // Try to restore the last selected project
+      const savedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT);
+      if (savedCurrentId && allProjects.length > 0) {
+        const found = allProjects.find((p) => p.id === savedCurrentId);
+        setCurrentProject(found || allProjects[0]);
+      } else if (allProjects.length > 0) {
+        setCurrentProject(allProjects[0]);
+      }
+
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
+    init();
   }, []);
 
   /**
@@ -92,6 +115,13 @@ export function ProjectProvider({ children }) {
     const updated = [...projects, newProject];
     setProjects(updated);
     saveProjects(updated);
+
+    // Sync to backend
+    if (isBackendConfigured()) {
+      apiPost('createProject', { data: newProject }).catch((err) =>
+        console.warn('[ProjectContext] Failed to sync new project:', err.message)
+      );
+    }
 
     // Auto-switch to the new project
     setCurrentProject(newProject);
@@ -125,6 +155,13 @@ export function ProjectProvider({ children }) {
     setProjects(updated);
     saveProjects(updated);
 
+    // Sync to backend
+    if (isBackendConfigured()) {
+      apiPost('updateProject', { projectId, data: updates }).catch((err) =>
+        console.warn('[ProjectContext] Failed to sync project update:', err.message)
+      );
+    }
+
     // If the current project was updated, refresh it
     if (currentProject && currentProject.id === projectId) {
       const refreshed = updated.find((p) => p.id === projectId);
@@ -151,6 +188,13 @@ export function ProjectProvider({ children }) {
     }
     keysToRemove.forEach((key) => localStorage.removeItem(key));
 
+    // Sync deletion to backend
+    if (isBackendConfigured()) {
+      apiPost('deleteProject', { projectId }).catch((err) =>
+        console.warn('[ProjectContext] Failed to sync project deletion:', err.message)
+      );
+    }
+
     // If the deleted project was currently selected, switch to another
     if (currentProject && currentProject.id === projectId) {
       if (updated.length > 0) {
@@ -163,16 +207,28 @@ export function ProjectProvider({ children }) {
     }
   }, [projects, currentProject]);
 
+  // ---- Filter projects by user role ----
+  const visibleProjects = useMemo(() => {
+    if (!currentUser) return projects;
+    const role = currentUser.role || 'resource';
+    // site_admin and super_admin (legacy) see everything
+    if (role === 'site_admin' || role === 'super_admin') return projects;
+    // Others only see their assigned projects
+    const assignedIds = currentUser.projectIds || [];
+    return projects.filter((p) => assignedIds.includes(p.id));
+  }, [projects, currentUser]);
+
   // ---- Context Value ----
   const contextValue = {
-    projects,
+    projects: visibleProjects,
+    allProjects: projects, // for admin management screens
     currentProject,
     isLoading,
     createProject,
     switchProject,
     updateProject,
     deleteProject,
-    hasProjects: projects.length > 0,
+    hasProjects: visibleProjects.length > 0,
   };
 
   return (

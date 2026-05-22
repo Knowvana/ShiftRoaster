@@ -22,6 +22,8 @@
  * ============================================================================
  */
 
+import { isBackendConfigured, apiGet, apiPost } from '@services/apiClient';
+
 // ---- Storage Key Helper ----
 function getStorageKey(projectId) {
   return `shiftRoster_${projectId}_swaps`;
@@ -168,4 +170,36 @@ function updateSwapStatus(projectId, swapId, status) {
 function saveSwaps(projectId, swaps) {
   const key = getStorageKey(projectId);
   localStorage.setItem(key, JSON.stringify(swaps));
+}
+
+// ============================================================================
+// ASYNC API-BACKED FUNCTIONS (for Google Sheets backend)
+// ============================================================================
+
+/**
+ * Fetch swaps from backend (or localStorage if offline).
+ */
+export async function fetchSwaps(projectId) {
+  if (!isBackendConfigured()) return getSwapRequests(projectId);
+  try {
+    const res = await apiGet('getSwaps', { projectId });
+    const swaps = res.data || [];
+    saveSwaps(projectId, swaps);
+    return swaps.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  } catch {
+    return getSwapRequests(projectId);
+  }
+}
+
+/**
+ * Save swaps to backend (and localStorage cache).
+ */
+export async function syncSwaps(projectId, swaps) {
+  saveSwaps(projectId, swaps);
+  if (!isBackendConfigured()) return;
+  try {
+    await apiPost('saveSwaps', { projectId, data: swaps });
+  } catch (err) {
+    console.warn('[swapService] Failed to sync to backend:', err.message);
+  }
 }

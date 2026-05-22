@@ -30,6 +30,8 @@
  * ============================================================================
  */
 
+import { isBackendConfigured, apiGet, apiPost } from '@services/apiClient';
+
 // ---- Storage Key Helper ----
 // Builds the localStorage key for a specific project + month roster
 function getStorageKey(projectId, year, month) {
@@ -236,4 +238,82 @@ export function getAvailableMonths(projectId) {
   });
 
   return months;
+}
+
+// ============================================================================
+// ASYNC API-BACKED FUNCTIONS (for Google Sheets backend)
+// ============================================================================
+
+/**
+ * Fetch roster from backend (or localStorage if offline).
+ */
+export async function fetchRoster(projectId, year, month) {
+  if (!isBackendConfigured()) return getRoster(projectId, year, month);
+  try {
+    const res = await apiGet('getRoster', { projectId, year, month });
+    const roster = res.data;
+    if (roster) {
+      // Cache locally
+      const key = getStorageKey(projectId, year, month);
+      localStorage.setItem(key, JSON.stringify(roster));
+    }
+    return roster;
+  } catch {
+    return getRoster(projectId, year, month);
+  }
+}
+
+/**
+ * Save roster to backend (and localStorage cache).
+ */
+export async function syncRoster(projectId, year, month, rosterData) {
+  // Always save locally
+  saveRoster(projectId, year, month, rosterData);
+  if (!isBackendConfigured()) return;
+  try {
+    await apiPost('saveRoster', { projectId, year, month, data: rosterData });
+  } catch (err) {
+    console.warn('[rosterService] Failed to sync roster to backend:', err.message);
+  }
+}
+
+/**
+ * Delete roster from backend (and localStorage).
+ */
+export async function syncDeleteRoster(projectId, year, month) {
+  deleteRoster(projectId, year, month);
+  if (!isBackendConfigured()) return;
+  try {
+    await apiPost('deleteRoster', { projectId, year, month });
+  } catch (err) {
+    console.warn('[rosterService] Failed to delete roster from backend:', err.message);
+  }
+}
+
+/**
+ * Create a formatted (color-coded) roster sheet in Google Sheets.
+ * Only works when backend is configured. No-op otherwise.
+ */
+export async function syncFormattedRoster(projectId, projectName, year, month, members, shifts, assignments) {
+  if (!isBackendConfigured()) return;
+  try {
+    await apiPost('createFormattedRoster', {
+      projectId, projectName, year, month, members, shifts, assignments
+    });
+  } catch (err) {
+    console.warn('[rosterService] Failed to create formatted roster:', err.message);
+  }
+}
+
+/**
+ * Fetch available roster months from backend.
+ */
+export async function fetchAvailableMonths(projectId) {
+  if (!isBackendConfigured()) return getAvailableMonths(projectId);
+  try {
+    const res = await apiGet('getAvailableMonths', { projectId });
+    return res.data || [];
+  } catch {
+    return getAvailableMonths(projectId);
+  }
 }

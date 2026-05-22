@@ -12,17 +12,18 @@
  * ============================================================================
  */
 
-import React, { useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Users, Clock, CalendarOff, ArrowLeftRight,
   Calendar, Briefcase, ChevronRight,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
-import { getMembers } from '@services/memberService';
-import { getShifts } from '@services/shiftService';
-import { getRoster, getDayOfWeek, getDayName } from '@services/rosterService';
-import { getPendingSwapCount } from '@services/swapService';
+import PageLoader from '@components/common/PageLoader';
+import { getMembers, fetchMembers } from '@services/memberService';
+import { getShifts, fetchShifts } from '@services/shiftService';
+import { getRoster, fetchRoster, getDayOfWeek, getDayName } from '@services/rosterService';
+import { getSwapRequests, fetchSwaps } from '@services/swapService';
 
 // ---- Month Names ----
 const MONTH_NAMES = [
@@ -60,70 +61,81 @@ function QuickAction({ to, icon: Icon, label }) {
   );
 }
 
+// ---- Build dashboard data from raw arrays ----
+function buildDashboardData(allMembers, shifts, roster, swaps) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const today = now.getDate();
+  const dayOfWeek = getDayOfWeek(year, month, today);
+  const dayName = getDayName(dayOfWeek);
+
+  const activeMembers = allMembers.filter((m) => m.isActive && (m.memberType || 'resource') === 'resource');
+  const pendingSwaps = swaps.filter((s) => s.status === 'pending').length;
+
+  const shiftMap = {};
+  for (const shift of shifts) shiftMap[shift.code] = shift;
+
+  const todayStr = String(today);
+  const todayShiftCounts = {};
+  const todayMemberShifts = [];
+  let workingCount = 0;
+  let onLeaveCount = 0;
+
+  for (const member of activeMembers) {
+    const code = roster?.assignments?.[member.id]?.[todayStr] || null;
+    const shift = code ? shiftMap[code] : null;
+    todayMemberShifts.push({ member, shiftCode: code, shift });
+    if (code) {
+      todayShiftCounts[code] = (todayShiftCounts[code] || 0) + 1;
+      if (shift && shift.isWorkingShift) workingCount++;
+      else if (code === 'PL' || code === 'CO' || code === 'CL' || code === 'SL' || code === 'EL' || code === 'LV') onLeaveCount++;
+    }
+  }
+
+  return {
+    year, month, today, dayName, dayOfWeek,
+    totalMembers: activeMembers.length,
+    totalShifts: shifts.length,
+    workingCount, onLeaveCount, pendingSwaps,
+    todayShiftCounts, todayMemberShifts, shifts, shiftMap,
+    hasRoster: !!roster,
+  };
+}
+
 export default function DashboardPage() {
   const { currentProject } = useProject();
+  const [dashboardData, setDashboardData] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // ---- Compute all dashboard data from localStorage ----
-  const dashboardData = useMemo(() => {
-    if (!currentProject) return null;
+  // ---- Phase 1: Instant load from localStorage cache ----
+  useEffect(() => {
+    if (!currentProject) { setDashboardData(null); return; }
 
     const now = new Date();
     const year = now.getFullYear();
-    const month = now.getMonth() + 1; // 1-indexed
-    const today = now.getDate();
-    const dayOfWeek = getDayOfWeek(year, month, today);
-    const dayName = getDayName(dayOfWeek);
+    const month = now.getMonth() + 1;
 
-    // Load data
-    const allMembers = getMembers(currentProject.id);
-    const activeMembers = allMembers.filter((m) => m.isActive);
-    const shifts = getShifts(currentProject.id);
-    const roster = getRoster(currentProject.id, year, month);
-    const pendingSwaps = getPendingSwapCount(currentProject.id);
+    const cachedData = buildDashboardData(
+      getMembers(currentProject.id),
+      getShifts(currentProject.id),
+      getRoster(currentProject.id, year, month),
+      getSwapRequests(currentProject.id),
+    );
+    setDashboardData(cachedData);
 
-    // Build shift code → shift object map
-    const shiftMap = {};
-    for (const shift of shifts) {
-      shiftMap[shift.code] = shift;
-    }
-
-    // Count today's shifts
-    const todayStr = String(today);
-    const todayShiftCounts = {}; // { shiftCode: count }
-    const todayMemberShifts = []; // [{ member, shiftCode, shift }]
-    let workingCount = 0;
-    let onLeaveCount = 0;
-
-    for (const member of activeMembers) {
-      const code = roster?.assignments?.[member.id]?.[todayStr] || null;
-      const shift = code ? shiftMap[code] : null;
-
-      todayMemberShifts.push({ member, shiftCode: code, shift });
-
-      if (code) {
-        todayShiftCounts[code] = (todayShiftCounts[code] || 0) + 1;
-
-        if (shift && shift.isWorkingShift) {
-          workingCount++;
-        } else if (code === 'PL' || code === 'CO' || code === 'CL' || code === 'SL' || code === 'EL' || code === 'LV') {
-          onLeaveCount++;
-        }
-      }
-    }
-
-    return {
-      year, month, today, dayName, dayOfWeek,
-      totalMembers: activeMembers.length,
-      totalShifts: shifts.length,
-      workingCount,
-      onLeaveCount,
-      pendingSwaps,
-      todayShiftCounts,
-      todayMemberShifts,
-      shifts,
-      shiftMap,
-      hasRoster: !!roster,
-    };
+    // ---- Phase 2: Background refresh from backend ----
+    setIsSyncing(true);
+    Promise.all([
+      fetchMembers(currentProject.id),
+      fetchShifts(currentProject.id),
+      fetchRoster(currentProject.id, year, month),
+      fetchSwaps(currentProject.id),
+    ]).then(([members, shifts, roster, swaps]) => {
+      setDashboardData(buildDashboardData(members, shifts, roster, swaps));
+    }).catch(() => {
+      // Keep cached data on error
+    }).finally(() => setIsSyncing(false));
   }, [currentProject]);
 
   // ---- No Project State ----
@@ -152,6 +164,9 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+
+      {/* ---- Background sync indicator (non-blocking) ---- */}
+      {isSyncing && <PageLoader message="Syncing..." />}
 
       {/* ---- Page Header ---- */}
       <div>

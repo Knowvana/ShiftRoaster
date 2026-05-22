@@ -17,16 +17,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Users, Plus, Pencil, Trash2, Search,
-  UserCheck, UserX, X, Check, AlertCircle,
+  UserCheck, UserX, X, Check, AlertCircle, UserCog, Briefcase,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
+import { usePermissions } from '@hooks/usePermissions';
+import PageLoader from '@components/common/PageLoader';
 import Modal from '@components/common/Modal';
 import {
   getMembers,
   addMember,
   updateMember,
   deleteMember,
+  fetchMembers,
+  syncMembers,
+  getResources,
+  getManagers,
 } from '@services/memberService';
 
 // ---- Empty Form State ----
@@ -36,6 +42,7 @@ const EMPTY_FORM = {
   email: '',
   phone: '',
   role: '',
+  memberType: 'resource',
 };
 
 // ---- Member Form Component ----
@@ -105,6 +112,28 @@ function MemberForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
         />
       </div>
 
+      {/* Member Type */}
+      <div>
+        <label htmlFor="memberType" className="field-label">
+          Member Type <span className="text-rose-500">*</span>
+        </label>
+        <select
+          id="memberType"
+          name="memberType"
+          value={formData.memberType}
+          onChange={handleChange}
+          className="input-field"
+        >
+          <option value="resource">Shift Resource</option>
+          <option value="manager">Manager / Supervisor</option>
+        </select>
+        <p className="text-xs text-slate-400 mt-1">
+          {formData.memberType === 'manager'
+            ? 'Managers cannot be assigned to shifts. They receive email notifications.'
+            : 'Shift resources are assigned to shifts in the roster.'}
+        </p>
+      </div>
+
       {/* Role/Designation (optional) */}
       <div>
         <label htmlFor="memberRole" className="field-label">Role / Designation</label>
@@ -149,6 +178,7 @@ function MemberForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
 export default function MembersPage() {
   const { currentProject } = useProject();
   const { showToast } = useToast();
+  const { canEdit } = usePermissions();
 
   // ---- State ----
   const [members, setMembers] = useState([]);
@@ -156,22 +186,30 @@ export default function MembersPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingMember, setEditingMember] = useState(null); // null = not editing
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // ---- Load members when project changes ----
+  // ---- Load members: instant from cache, then background refresh ----
   useEffect(() => {
     if (currentProject) {
-      const loaded = getMembers(currentProject.id);
-      setMembers(loaded);
+      // Phase 1: Instant from localStorage
+      setMembers(getMembers(currentProject.id));
+      // Phase 2: Background refresh from backend
+      setIsSyncing(true);
+      fetchMembers(currentProject.id)
+        .then((data) => setMembers(data))
+        .catch(() => {})
+        .finally(() => setIsSyncing(false));
     } else {
       setMembers([]);
     }
   }, [currentProject]);
 
-  // ---- Reload members from storage (used after mutations) ----
+  // ---- Reload members from storage and sync to backend ----
   const reloadMembers = () => {
     if (currentProject) {
       const loaded = getMembers(currentProject.id);
       setMembers(loaded);
+      syncMembers(currentProject.id, loaded);
     }
   };
 
@@ -205,6 +243,7 @@ export default function MembersPage() {
       email: member.email || '',
       phone: member.phone || '',
       role: member.role || '',
+      memberType: member.memberType || 'resource',
     });
     setEditingMember(member);
     setIsAddModalOpen(true);
@@ -220,17 +259,15 @@ export default function MembersPage() {
   /** Submit the form — either create or update */
   const handleFormSubmit = (data) => {
     if (editingMember) {
-      // Editing existing member
       updateMember(currentProject.id, editingMember.id, data);
       showToast(`${data.name} updated`, 'success');
     } else {
-      // Adding new member
       addMember(currentProject.id, data);
       showToast(`${data.name} added to the team`, 'success');
     }
 
     handleCloseModal();
-    reloadMembers();
+    reloadMembers(); // syncs to backend
   };
 
   /** Delete a member with confirmation */
@@ -242,7 +279,7 @@ export default function MembersPage() {
     if (confirmed) {
       deleteMember(currentProject.id, member.id);
       showToast(`${member.name} removed`, 'info');
-      reloadMembers();
+      reloadMembers(); // syncs to backend
     }
   };
 
@@ -256,6 +293,8 @@ export default function MembersPage() {
     );
     reloadMembers();
   };
+
+  // ---- No project state ----
 
   // ---- No Project Selected State ----
   if (!currentProject) {
@@ -273,9 +312,14 @@ export default function MembersPage() {
   // ---- Count stats ----
   const activeCount = members.filter((m) => m.isActive).length;
   const inactiveCount = members.filter((m) => !m.isActive).length;
+  const resourceCount = members.filter((m) => (m.memberType || 'resource') === 'resource').length;
+  const managerCount = members.filter((m) => m.memberType === 'manager').length;
 
   return (
     <div className="space-y-6 animate-fade-in">
+
+      {/* ---- Background sync indicator (non-blocking) ---- */}
+      {isSyncing && <PageLoader message="Syncing..." />}
 
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -286,21 +330,23 @@ export default function MembersPage() {
             <span className="font-medium text-slate-700">{currentProject.name}</span>
             {members.length > 0 && (
               <span className="text-slate-400">
-                {' '}({activeCount} active, {inactiveCount} inactive)
+                {' '}({resourceCount} resources, {managerCount} managers &bull; {activeCount} active)
               </span>
             )}
           </p>
         </div>
 
-        {/* Add Member button */}
-        <button
-          onClick={handleOpenAdd}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
-                     bg-brand-600 text-white hover:bg-brand-700 transition-colors self-start"
-        >
-          <Plus size={16} />
-          Add Member
-        </button>
+        {/* Add Member button (hidden for read-only users) */}
+        {canEdit && (
+          <button
+            onClick={handleOpenAdd}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
+                       bg-brand-600 text-white hover:bg-brand-700 transition-colors self-start"
+          >
+            <Plus size={16} />
+            Add Member
+          </button>
+        )}
       </div>
 
       {/* ---- Search Bar ---- */}
@@ -345,9 +391,11 @@ export default function MembersPage() {
                   <th className="text-center px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                    Actions
-                  </th>
+                  {canEdit && (
+                    <th className="text-right px-4 py-3 text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  )}
                 </tr>
               </thead>
 
@@ -363,12 +411,21 @@ export default function MembersPage() {
                       <div className="flex items-center gap-3">
                         {/* Avatar circle with first letter of name */}
                         <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0
-                          ${member.isActive ? 'bg-brand-500' : 'bg-slate-400'}`}
+                          ${!member.isActive ? 'bg-slate-400' : member.memberType === 'manager' ? 'bg-amber-500' : 'bg-brand-500'}`}
                         >
                           {member.name.charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-sm font-medium text-slate-800">{member.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-800">{member.name}</p>
+                            <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase
+                              ${member.memberType === 'manager'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-brand-50 text-brand-700 border border-brand-200'}`}
+                            >
+                              {member.memberType === 'manager' ? <><UserCog size={10} /> Mgr</> : <><Briefcase size={10} /> Res</>}
+                            </span>
+                          </div>
                           {/* Show email on mobile (hidden in separate column) */}
                           <p className="text-xs text-slate-400 sm:hidden">{member.email}</p>
                         </div>
@@ -387,45 +444,59 @@ export default function MembersPage() {
 
                     {/* Status toggle */}
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={() => handleToggleActive(member)}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors
+                      {canEdit ? (
+                        <button
+                          onClick={() => handleToggleActive(member)}
+                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors
+                            ${member.isActive
+                              ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            }`}
+                          title={`Click to ${member.isActive ? 'deactivate' : 'activate'}`}
+                        >
+                          {member.isActive ? (
+                            <><UserCheck size={12} /> Active</>
+                          ) : (
+                            <><UserX size={12} /> Inactive</>
+                          )}
+                        </button>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium
                           ${member.isActive
-                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-500'
                           }`}
-                        title={`Click to ${member.isActive ? 'deactivate' : 'activate'}`}
-                      >
-                        {member.isActive ? (
-                          <><UserCheck size={12} /> Active</>
-                        ) : (
-                          <><UserX size={12} /> Inactive</>
-                        )}
-                      </button>
+                        >
+                          {member.isActive ? (
+                            <><UserCheck size={12} /> Active</>
+                          ) : (
+                            <><UserX size={12} /> Inactive</>
+                          )}
+                        </span>
+                      )}
                     </td>
 
-                    {/* Action buttons: Edit, Delete */}
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {/* Edit button */}
-                        <button
-                          onClick={() => handleOpenEdit(member)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-                          title="Edit member"
-                        >
-                          <Pencil size={15} />
-                        </button>
-
-                        {/* Delete button */}
-                        <button
-                          onClick={() => handleDelete(member)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          title="Remove member"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
+                    {/* Action buttons: Edit, Delete (hidden for read-only) */}
+                    {canEdit && (
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleOpenEdit(member)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+                            title="Edit member"
+                          >
+                            <Pencil size={15} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(member)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Remove member"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

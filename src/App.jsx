@@ -22,7 +22,7 @@ import MembersPage from '@pages/MembersPage';
 import ShiftsPage from '@pages/ShiftsPage';
 import SwapRequestsPage from '@pages/SwapRequestsPage';
 import ProjectsPage from '@pages/ProjectsPage';
-import GoogleSheetsPage from '@pages/GoogleSheetsPage';
+import EmailConfigPage from '@pages/EmailConfigPage';
 import { useAuth } from '@hooks/useAuth';
 
 // ---- Protected Route Wrapper ----
@@ -80,7 +80,7 @@ function AppRoutes() {
         <Route path="shifts" element={<ShiftsPage />} />
         <Route path="swaps" element={<SwapRequestsPage />} />
         <Route path="projects" element={<ProjectsPage />} />
-        <Route path="google-sheets" element={<GoogleSheetsPage />} />
+        <Route path="email-config" element={<EmailConfigPage />} />
       </Route>
 
       {/* Catch-all: redirect unknown routes to dashboard */}

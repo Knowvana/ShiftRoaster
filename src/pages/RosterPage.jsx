@@ -27,11 +27,14 @@ import {
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
-import { getMembers } from '@services/memberService';
-import { getShifts } from '@services/shiftService';
+import { usePermissions } from '@hooks/usePermissions';
+import PageLoader from '@components/common/PageLoader';
+import { getMembers, fetchMembers } from '@services/memberService';
+import { getShifts, fetchShifts } from '@services/shiftService';
 import {
   getRoster, saveRoster, getDaysInMonth,
   getDayOfWeek, getDayName, deleteRoster,
+  fetchRoster, syncRoster, syncDeleteRoster, syncFormattedRoster,
 } from '@services/rosterService';
 import { generateRoster, adjustForLeave } from '@services/rosterEngine';
 import { exportRosterToExcel } from '@utils/exportExcel';
@@ -362,6 +365,21 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
 }
 
 // ============================================================================
+// Strip unknown/legacy shift codes from roster assignments
+// ============================================================================
+
+function cleanAssignments(assignments, shiftMap) {
+  const cleaned = {};
+  for (const [memberId, days] of Object.entries(assignments)) {
+    cleaned[memberId] = {};
+    for (const [day, code] of Object.entries(days)) {
+      if (shiftMap[code]) cleaned[memberId][day] = code;
+    }
+  }
+  return cleaned;
+}
+
+// ============================================================================
 // MONTHLY VIEW
 // ============================================================================
 
@@ -428,7 +446,9 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
             </tr>
             {/* Day numbers row */}
             <tr className="bg-slate-50">
-              <th className="sticky left-0 z-10 bg-slate-50 px-3 py-1 text-[10px] font-bold text-slate-600 text-left border-b border-r border-slate-200" />
+              <th className="sticky left-0 z-10 bg-slate-50 px-3 py-1 text-[10px] font-bold text-brand-600 text-left border-b border-r border-slate-200">
+                Dates →
+              </th>
               {dayHeaders.map(({ day, isWeekend }) => (
                 <th key={day} className={`px-0 py-1 text-[10px] font-bold border-b border-slate-200 ${isWeekend ? 'bg-rose-50 text-rose-600' : 'text-slate-700'}`}>
                   {day}
@@ -459,23 +479,22 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                 <td className="px-2 py-1 text-[9px] text-slate-500 border-l border-b border-slate-100 text-left whitespace-nowrap">
                   {memberShiftCounts[member.id] && (
                     <div className="flex flex-wrap gap-0.5">
-                      {Object.entries(memberShiftCounts[member.id]).map(([code, count]) => {
-                        const s = shiftMap[code];
-                        return (
-                          <span key={code} className="inline-flex items-center px-1 rounded text-white font-bold" style={{ backgroundColor: s ? s.color : '#94a3b8', fontSize: '8px' }}>
+                      {Object.entries(memberShiftCounts[member.id])
+                        .filter(([code]) => shiftMap[code])
+                        .map(([code, count]) => (
+                          <span key={code} className="inline-flex items-center px-1 rounded text-white font-bold" style={{ backgroundColor: shiftMap[code].color, fontSize: '8px' }}>
                             {code}:{count}
                           </span>
-                        );
-                      })}
+                        ))}
                     </div>
                   )}
                 </td>
               </tr>
             ))}
             {/* Daily availability row */}
-            <tr className="bg-slate-50 border-t-2 border-slate-300">
-              <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-[10px] font-bold text-slate-600 text-left border-r border-slate-200">
-                Availability
+            <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-t-2 border-emerald-200">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2.5 text-[10px] font-bold text-emerald-700 text-left border-r border-emerald-200 uppercase tracking-wide">
+                👥 Staff
               </td>
               {dayHeaders.map(({ day }) => {
                 const counts = dailyShiftCounts[day] || {};
@@ -484,12 +503,12 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                   if (shiftMap[code] && shiftMap[code].isWorkingShift) wc += cnt;
                 }
                 return (
-                  <td key={day} className="px-0 py-2 text-[10px] font-bold border border-slate-200 text-center">
-                    <span className={wc > 0 ? 'text-emerald-600' : 'text-slate-300'}>{wc}</span>
+                  <td key={day} className={`px-0 py-2.5 text-[11px] font-bold border border-emerald-100 text-center transition-colors ${wc > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-50 text-slate-300'}`}>
+                    {wc}
                   </td>
                 );
               })}
-              <td className="px-2 py-2 border-l border-slate-200 bg-slate-50" />
+              <td className="px-2 py-2.5 border-l border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50" />
             </tr>
           </tbody>
         </table>
@@ -505,6 +524,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
 export default function RosterPage() {
   const { currentProject } = useProject();
   const { showToast } = useToast();
+  const { canEdit } = usePermissions();
 
   // ---- State ----
   const [activeView, setActiveView] = useState('monthly');
@@ -515,6 +535,7 @@ export default function RosterPage() {
   const [shifts, setShifts] = useState([]);
   const [assignments, setAssignments] = useState({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // ---- Computed ----
   const totalDays = useMemo(() => getDaysInMonth(selectedYear, selectedMonth), [selectedYear, selectedMonth]);
@@ -526,17 +547,38 @@ export default function RosterPage() {
     return map;
   }, [shifts]);
 
-  // ---- Load data ----
+  // ---- Load data: instant from cache, then background refresh ----
   useEffect(() => {
     if (!currentProject) {
       setMembers([]); setShifts([]); setAssignments({});
       return;
     }
-    setMembers(getMembers(currentProject.id).filter((m) => m.isActive));
-    setShifts(getShifts(currentProject.id));
-    const roster = getRoster(currentProject.id, selectedYear, selectedMonth);
-    setAssignments(roster?.assignments || {});
+
+    // Helper: build a shift lookup map from an array
+    const buildMap = (arr) => { const m = {}; for (const s of arr) m[s.code] = s; return m; };
+
+    // Phase 1: Instant from localStorage
+    const cachedMembers = getMembers(currentProject.id)
+      .filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource');
+    const cachedShifts = getShifts(currentProject.id);
+    const cachedRoster = getRoster(currentProject.id, selectedYear, selectedMonth);
+    setMembers(cachedMembers);
+    setShifts(cachedShifts);
+    setAssignments(cleanAssignments(cachedRoster?.assignments || {}, buildMap(cachedShifts)));
     setHasUnsavedChanges(false);
+
+    // Phase 2: Background refresh from backend
+    setIsSyncing(true);
+    Promise.all([
+      fetchMembers(currentProject.id),
+      fetchShifts(currentProject.id),
+      fetchRoster(currentProject.id, selectedYear, selectedMonth),
+    ]).then(([m, s, r]) => {
+      setMembers(m.filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource'));
+      setShifts(s);
+      setAssignments(cleanAssignments(r?.assignments || {}, buildMap(s)));
+      setHasUnsavedChanges(false);
+    }).catch(() => {}).finally(() => setIsSyncing(false));
   }, [currentProject, selectedYear, selectedMonth]);
 
   // Clamp selectedDay when month changes
@@ -609,7 +651,11 @@ export default function RosterPage() {
   };
 
   const handleSave = () => {
-    saveRoster(currentProject.id, selectedYear, selectedMonth, { assignments, generatedAt: new Date().toISOString() });
+    const rosterData = { assignments, generatedAt: new Date().toISOString() };
+    saveRoster(currentProject.id, selectedYear, selectedMonth, rosterData);
+    syncRoster(currentProject.id, selectedYear, selectedMonth, rosterData);
+    // Also create formatted sheet in Google Sheets
+    syncFormattedRoster(currentProject.id, currentProject.name, selectedYear, selectedMonth, members, shifts, assignments);
     setHasUnsavedChanges(false);
     showToast('Roster saved!', 'success');
   };
@@ -617,6 +663,7 @@ export default function RosterPage() {
   const handleClear = () => {
     if (window.confirm('Clear the entire roster for this month?')) {
       deleteRoster(currentProject.id, selectedYear, selectedMonth);
+      syncDeleteRoster(currentProject.id, selectedYear, selectedMonth);
       setAssignments({});
       setHasUnsavedChanges(false);
       showToast('Roster cleared', 'info');
@@ -628,6 +675,8 @@ export default function RosterPage() {
     exportRosterToExcel(currentProject.name, members, shifts, assignments, selectedYear, selectedMonth);
     showToast('Excel file downloaded!', 'success');
   };
+
+  // ---- No project state ----
 
   // ---- No Project ----
   if (!currentProject) {
@@ -679,6 +728,9 @@ export default function RosterPage() {
   return (
     <div className="space-y-4 animate-fade-in">
 
+      {/* ---- Background sync indicator (non-blocking) ---- */}
+      {isSyncing && <PageLoader message="Syncing..." />}
+
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -690,18 +742,24 @@ export default function RosterPage() {
         </div>
         {/* Action Buttons */}
         <div className="flex items-center gap-2 flex-wrap">
-          <button onClick={handleGenerate} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors">
-            <Wand2 size={14} /> Auto Generate
-          </button>
-          <button onClick={handleSave} disabled={!hasUnsavedChanges} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <Save size={14} /> Save
-          </button>
+          {canEdit && (
+            <button onClick={handleGenerate} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 transition-colors">
+              <Wand2 size={14} /> Auto Generate
+            </button>
+          )}
+          {canEdit && (
+            <button onClick={handleSave} disabled={!hasUnsavedChanges} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <Save size={14} /> Save
+            </button>
+          )}
           <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors">
             <Download size={14} /> Export
           </button>
-          <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors">
-            <Trash2 size={14} /> Clear
-          </button>
+          {canEdit && (
+            <button onClick={handleClear} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors">
+              <Trash2 size={14} /> Clear
+            </button>
+          )}
         </div>
       </div>
 
@@ -749,7 +807,7 @@ export default function RosterPage() {
           members={members} shifts={shifts} shiftMap={shiftMap}
           assignments={assignments} selectedYear={selectedYear}
           selectedMonth={selectedMonth} selectedDay={selectedDay}
-          onCellChange={handleCellChange}
+          onCellChange={canEdit ? handleCellChange : undefined}
         />
       )}
 
@@ -758,7 +816,7 @@ export default function RosterPage() {
           members={members} shifts={shifts} shiftMap={shiftMap}
           assignments={assignments} selectedYear={selectedYear}
           selectedMonth={selectedMonth} selectedDay={selectedDay}
-          onCellChange={handleCellChange}
+          onCellChange={canEdit ? handleCellChange : undefined}
         />
       )}
 
@@ -766,7 +824,7 @@ export default function RosterPage() {
         <MonthlyView
           members={members} shifts={shifts} shiftMap={shiftMap}
           assignments={assignments} selectedYear={selectedYear}
-          selectedMonth={selectedMonth} onCellChange={handleCellChange}
+          selectedMonth={selectedMonth} onCellChange={canEdit ? handleCellChange : undefined}
         />
       )}
 

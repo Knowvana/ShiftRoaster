@@ -10,7 +10,7 @@
  * ============================================================================
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -19,22 +19,24 @@ import {
   Clock,
   ArrowLeftRight,
   FolderOpen,
-  Sheet,
   X,
   Shield,
+  Mail,
 } from 'lucide-react';
 import appConfig from '@config/app.json';
+import { usePermissions } from '@hooks/usePermissions';
 
 // ---- Navigation Items ----
 // Each item has a label, path, and icon component
+// minRole: 'resource' = everyone, 'project_admin' = admins only, 'site_admin' = site admin only
 const NAV_ITEMS = [
-  { label: 'Dashboard',     path: '/dashboard', icon: LayoutDashboard },
-  { label: 'Roster',        path: '/roster',    icon: Calendar },
-  { label: 'Team Members',  path: '/members',   icon: Users },
-  { label: 'Shifts',        path: '/shifts',    icon: Clock },
-  { label: 'Swap Requests', path: '/swaps',     icon: ArrowLeftRight },
-  { label: 'Google Sheets', path: '/google-sheets', icon: Sheet },
-  { label: 'Projects',      path: '/projects',  icon: FolderOpen },
+  { label: 'Dashboard',     path: '/dashboard',    icon: LayoutDashboard, minRole: 'resource' },
+  { label: 'Roster',        path: '/roster',       icon: Calendar,        minRole: 'resource' },
+  { label: 'Team Members',  path: '/members',      icon: Users,           minRole: 'resource' },
+  { label: 'Shifts',        path: '/shifts',       icon: Clock,           minRole: 'resource' },
+  { label: 'Swap Requests', path: '/swaps',        icon: ArrowLeftRight,  minRole: 'resource' },
+  { label: 'Email Config',  path: '/email-config', icon: Mail,            minRole: 'project_admin' },
+  { label: 'Projects',      path: '/projects',     icon: FolderOpen,      minRole: 'site_admin' },
 ];
 
 // ---- Single Nav Link Component ----
@@ -62,6 +64,16 @@ function SidebarLink({ item, onClick }) {
 
 // ---- Main Sidebar Component ----
 export default function Sidebar({ isOpen, onClose }) {
+  const { isSiteAdmin, isProjectAdmin } = usePermissions();
+
+  const visibleItems = useMemo(() => {
+    return NAV_ITEMS.filter((item) => {
+      if (item.minRole === 'site_admin') return isSiteAdmin;
+      if (item.minRole === 'project_admin') return isSiteAdmin || isProjectAdmin;
+      return true; // 'resource' — everyone sees it
+    });
+  }, [isSiteAdmin, isProjectAdmin]);
+
   return (
     <>
       {/* Mobile overlay backdrop (only visible when sidebar is open on mobile) */}
@@ -110,7 +122,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
           {/* ---- Navigation Links ---- */}
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-            {NAV_ITEMS.map((item) => (
+            {visibleItems.map((item) => (
               <SidebarLink key={item.path} item={item} onClick={onClose} />
             ))}
           </nav>

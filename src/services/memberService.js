@@ -3,8 +3,9 @@
  * memberService.js — Team Member Data Service
  * 
  * Handles all CRUD operations for team members within a project.
- * Data is stored in localStorage with the key format:
- *   shiftRoster_{projectId}_members
+ * 
+ * STORAGE: Uses Google Sheets (via Apps Script) when backend is configured,
+ *          falls back to localStorage for offline/development use.
  * 
  * Each member object has:
  *   - id: unique string identifier
@@ -12,10 +13,13 @@
  *   - email: email address (optional)
  *   - phone: phone number (optional)
  *   - role: team role/designation (optional)
+ *   - memberType: 'resource' (shift worker) or 'manager' (supervisor, not assigned to shifts)
  *   - isActive: whether the member is currently active (default true)
  *   - createdAt: ISO timestamp of creation
  * ============================================================================
  */
+
+import { isBackendConfigured, apiGet, apiPost } from '@services/apiClient';
 
 // ---- Storage Key Helper ----
 // Builds the localStorage key for a specific project's members
@@ -74,6 +78,7 @@ export function addMember(projectId, memberData) {
     email: (memberData.email || '').trim(),
     phone: (memberData.phone || '').trim(),
     role: (memberData.role || '').trim(),
+    memberType: memberData.memberType || 'resource',
     isActive: true,
     createdAt: new Date().toISOString(),
   };
@@ -100,6 +105,7 @@ export function updateMember(projectId, memberId, updates) {
         email: updates.email !== undefined ? updates.email.trim() : member.email,
         phone: updates.phone !== undefined ? updates.phone.trim() : member.phone,
         role: updates.role !== undefined ? updates.role.trim() : member.role,
+        memberType: updates.memberType !== undefined ? updates.memberType : (member.memberType || 'resource'),
         isActive: updates.isActive !== undefined ? updates.isActive : member.isActive,
       };
       return updatedMember;
@@ -156,8 +162,65 @@ export function importMembers(projectId, memberList) {
   return addedCount;
 }
 
+/**
+ * Get only shift resources (memberType = 'resource' or missing memberType).
+ * Returns active resources sorted by name.
+ */
+export function getResources(projectId) {
+  return getMembers(projectId).filter((m) => (m.memberType || 'resource') === 'resource');
+}
+
+/**
+ * Get only managers/supervisors (memberType = 'manager').
+ * Returns managers sorted by name.
+ */
+export function getManagers(projectId) {
+  return getMembers(projectId).filter((m) => m.memberType === 'manager');
+}
+
 // ---- Internal: Save Members to localStorage ----
 function saveMembers(projectId, members) {
   const key = getStorageKey(projectId);
   localStorage.setItem(key, JSON.stringify(members));
+}
+
+// ============================================================================
+// ASYNC API-BACKED FUNCTIONS (for Google Sheets backend)
+// These are used by pages when the backend is configured.
+// They sync data to Google Sheets AND update localStorage as a cache.
+// ============================================================================
+
+/**
+ * Fetch members from backend (or localStorage if offline).
+ */
+export async function fetchMembers(projectId) {
+  // Return cached data instantly — no waiting for backend
+  const cached = getMembers(projectId);
+  if (!isBackendConfigured()) return cached;
+
+  // Fetch from backend (may be slow due to Apps Script cold start)
+  try {
+    const res = await apiGet('getMembers', { projectId });
+    const members = res.data || [];
+    if (members.length > 0) {
+      saveMembers(projectId, members);
+      return members.sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return cached;
+  } catch {
+    return cached;
+  }
+}
+
+/**
+ * Save members to backend (and localStorage cache).
+ */
+export async function syncMembers(projectId, members) {
+  saveMembers(projectId, members); // Always update local cache
+  if (!isBackendConfigured()) return;
+  try {
+    await apiPost('saveMembers', { projectId, data: members });
+  } catch (err) {
+    console.warn('[memberService] Failed to sync to backend:', err.message);
+  }
 }

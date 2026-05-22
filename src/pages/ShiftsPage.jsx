@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
+import { usePermissions } from '@hooks/usePermissions';
+import PageLoader from '@components/common/PageLoader';
 import Modal from '@components/common/Modal';
 import {
   getShifts,
@@ -28,6 +30,8 @@ import {
   updateShift,
   deleteShift,
   resetToDefaults,
+  fetchShifts,
+  syncShifts,
 } from '@services/shiftService';
 
 // ---- Preset Color Palette ----
@@ -264,7 +268,7 @@ function ShiftForm({ formData, onChange, onSubmit, onCancel, isEditing }) {
 
 // ---- Single Shift Card ----
 // Displays one shift definition with edit/delete actions
-function ShiftCard({ shift, onEdit, onDelete }) {
+function ShiftCard({ shift, onEdit, onDelete, canEdit }) {
   return (
     <div className="card p-4 flex items-center justify-between hover:shadow-card-lg transition-shadow">
       {/* Left: color badge + shift info */}
@@ -302,23 +306,25 @@ function ShiftCard({ shift, onEdit, onDelete }) {
         </div>
       </div>
 
-      {/* Right: action buttons */}
-      <div className="flex items-center gap-1 flex-shrink-0 ml-3">
-        <button
-          onClick={() => onEdit(shift)}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
-          title="Edit shift"
-        >
-          <Pencil size={15} />
-        </button>
-        <button
-          onClick={() => onDelete(shift)}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-          title="Delete shift"
-        >
-          <Trash2 size={15} />
-        </button>
-      </div>
+      {/* Right: action buttons (hidden for read-only) */}
+      {canEdit && (
+        <div className="flex items-center gap-1 flex-shrink-0 ml-3">
+          <button
+            onClick={() => onEdit(shift)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50 transition-colors"
+            title="Edit shift"
+          >
+            <Pencil size={15} />
+          </button>
+          <button
+            onClick={() => onDelete(shift)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+            title="Delete shift"
+          >
+            <Trash2 size={15} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -327,26 +333,37 @@ function ShiftCard({ shift, onEdit, onDelete }) {
 export default function ShiftsPage() {
   const { currentProject } = useProject();
   const { showToast } = useToast();
+  const { canEdit } = usePermissions();
 
   // ---- State ----
   const [shifts, setShifts] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingShift, setEditingShift] = useState(null);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // ---- Load shifts when project changes ----
+  // ---- Load shifts: instant from cache, then background refresh ----
   useEffect(() => {
     if (currentProject) {
+      // Phase 1: Instant from localStorage
       setShifts(getShifts(currentProject.id));
+      // Phase 2: Background refresh from backend
+      setIsSyncing(true);
+      fetchShifts(currentProject.id)
+        .then((data) => setShifts(data))
+        .catch(() => {})
+        .finally(() => setIsSyncing(false));
     } else {
       setShifts([]);
     }
   }, [currentProject]);
 
-  // ---- Reload from storage ----
+  // ---- Reload from storage and sync to backend ----
   const reloadShifts = () => {
     if (currentProject) {
-      setShifts(getShifts(currentProject.id));
+      const loaded = getShifts(currentProject.id);
+      setShifts(loaded);
+      syncShifts(currentProject.id, loaded);
     }
   };
 
@@ -427,6 +444,8 @@ export default function ShiftsPage() {
     }
   };
 
+  // ---- No project state ----
+
   // ---- No Project State ----
   if (!currentProject) {
     return (
@@ -447,6 +466,9 @@ export default function ShiftsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
 
+      {/* ---- Background sync indicator (non-blocking) ---- */}
+      {isSyncing && <PageLoader message="Syncing..." />}
+
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -457,28 +479,27 @@ export default function ShiftsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start">
-          {/* Reset to defaults button */}
-          <button
-            onClick={handleResetDefaults}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium
-                       bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors"
-            title="Reset to default shifts"
-          >
-            <RotateCcw size={14} />
-            Reset
-          </button>
-
-          {/* Add Shift button */}
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
-                       bg-brand-600 text-white hover:bg-brand-700 transition-colors"
-          >
-            <Plus size={16} />
-            Add Shift
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex items-center gap-2 self-start">
+            <button
+              onClick={handleResetDefaults}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium
+                         bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors"
+              title="Reset to default shifts"
+            >
+              <RotateCcw size={14} />
+              Reset
+            </button>
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
+                         bg-brand-600 text-white hover:bg-brand-700 transition-colors"
+            >
+              <Plus size={16} />
+              Add Shift
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ---- Working Shifts Section ---- */}
@@ -495,6 +516,7 @@ export default function ShiftsPage() {
                 shift={shift}
                 onEdit={handleOpenEdit}
                 onDelete={handleDelete}
+                canEdit={canEdit}
               />
             ))}
           </div>
@@ -515,6 +537,7 @@ export default function ShiftsPage() {
                 shift={shift}
                 onEdit={handleOpenEdit}
                 onDelete={handleDelete}
+                canEdit={canEdit}
               />
             ))}
           </div>

@@ -20,15 +20,19 @@ import {
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
+import { usePermissions } from '@hooks/usePermissions';
+import PageLoader from '@components/common/PageLoader';
 import Modal from '@components/common/Modal';
-import { getMembers } from '@services/memberService';
-import { getShifts } from '@services/shiftService';
+import { getMembers, fetchMembers } from '@services/memberService';
+import { getShifts, fetchShifts } from '@services/shiftService';
 import {
   getRoster, saveRoster, getDaysInMonth,
+  syncRoster,
 } from '@services/rosterService';
 import {
   getSwapRequests, createSwapRequest,
   approveSwap, rejectSwap, deleteSwapRequest,
+  fetchSwaps, syncSwaps,
 } from '@services/swapService';
 
 // ---- Month Names ----
@@ -283,8 +287,8 @@ function SwapCard({ swap, members, shifts, onApprove, onReject, onDelete }) {
         <p className="text-xs text-slate-500 italic">"{swap.reason}"</p>
       )}
 
-      {/* Actions (only for pending) */}
-      {swap.status === 'pending' && (
+      {/* Actions (only for pending, hidden for read-only) */}
+      {swap.status === 'pending' && onApprove && onReject && (
         <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
           <button
             onClick={() => onApprove(swap)}
@@ -305,8 +309,8 @@ function SwapCard({ swap, members, shifts, onApprove, onReject, onDelete }) {
         </div>
       )}
 
-      {/* Delete for resolved swaps */}
-      {swap.status !== 'pending' && (
+      {/* Delete for resolved swaps (hidden for read-only) */}
+      {swap.status !== 'pending' && onDelete && (
         <div className="flex justify-end pt-1 border-t border-slate-100">
           <button
             onClick={() => onDelete(swap)}
@@ -325,6 +329,7 @@ function SwapCard({ swap, members, shifts, onApprove, onReject, onDelete }) {
 export default function SwapRequestsPage() {
   const { currentProject } = useProject();
   const { showToast } = useToast();
+  const { canEdit } = usePermissions();
 
   // ---- State ----
   const [swaps, setSwaps] = useState([]);
@@ -332,24 +337,39 @@ export default function SwapRequestsPage() {
   const [shifts, setShifts] = useState([]);
   const [activeTab, setActiveTab] = useState('pending');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
 
-  // ---- Load data ----
+  // ---- Load data: instant from cache, then background refresh ----
   useEffect(() => {
     if (!currentProject) {
-      setSwaps([]);
-      setMembers([]);
-      setShifts([]);
+      setSwaps([]); setMembers([]); setShifts([]);
       return;
     }
 
+    // Phase 1: Instant from localStorage
     setSwaps(getSwapRequests(currentProject.id));
-    setMembers(getMembers(currentProject.id).filter((m) => m.isActive));
+    setMembers(getMembers(currentProject.id)
+      .filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource'));
     setShifts(getShifts(currentProject.id));
+
+    // Phase 2: Background refresh from backend
+    setIsSyncing(true);
+    Promise.all([
+      fetchSwaps(currentProject.id),
+      fetchMembers(currentProject.id),
+      fetchShifts(currentProject.id),
+    ]).then(([sw, m, s]) => {
+      setSwaps(sw);
+      setMembers(m.filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource'));
+      setShifts(s);
+    }).catch(() => {}).finally(() => setIsSyncing(false));
   }, [currentProject]);
 
   const reloadSwaps = () => {
     if (currentProject) {
-      setSwaps(getSwapRequests(currentProject.id));
+      const loaded = getSwapRequests(currentProject.id);
+      setSwaps(loaded);
+      syncSwaps(currentProject.id, loaded);
     }
   };
 
@@ -399,6 +419,7 @@ export default function SwapRequestsPage() {
         roster.assignments[swap.targetId][dayStr] = temp;
 
         saveRoster(currentProject.id, swap.year, swap.month, roster);
+        syncRoster(currentProject.id, swap.year, swap.month, roster);
       }
     }
 
@@ -420,6 +441,8 @@ export default function SwapRequestsPage() {
     reloadSwaps();
   };
 
+  // ---- No project state ----
+
   // ---- No Project State ----
   if (!currentProject) {
     return (
@@ -436,6 +459,9 @@ export default function SwapRequestsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
 
+      {/* ---- Background sync indicator (non-blocking) ---- */}
+      {isSyncing && <PageLoader message="Syncing..." />}
+
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -446,14 +472,16 @@ export default function SwapRequestsPage() {
           </p>
         </div>
 
-        <button
-          onClick={() => setIsCreateOpen(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
-                     bg-brand-600 text-white hover:bg-brand-700 transition-colors self-start"
-        >
-          <Plus size={16} />
-          New Swap
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setIsCreateOpen(true)}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
+                       bg-brand-600 text-white hover:bg-brand-700 transition-colors self-start"
+          >
+            <Plus size={16} />
+            New Swap
+          </button>
+        )}
       </div>
 
       {/* ---- Tabs ---- */}
@@ -496,9 +524,9 @@ export default function SwapRequestsPage() {
               swap={swap}
               members={members}
               shifts={shifts}
-              onApprove={handleApprove}
-              onReject={handleReject}
-              onDelete={handleDelete}
+              onApprove={canEdit ? handleApprove : undefined}
+              onReject={canEdit ? handleReject : undefined}
+              onDelete={canEdit ? handleDelete : undefined}
             />
           ))}
         </div>
