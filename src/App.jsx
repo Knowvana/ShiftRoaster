@@ -14,6 +14,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@context/AuthContext';
 import { ProjectProvider } from '@context/ProjectContext';
 import { ToastProvider } from '@context/ToastContext';
+import { SyncProvider } from '@context/SyncContext';
 import MainLayout from '@components/layout/MainLayout';
 import LoginPage from '@pages/LoginPage';
 import DashboardPage from '@pages/DashboardPage';
@@ -96,7 +97,9 @@ export default function App() {
       <ToastProvider>
         <AuthProvider>
           <ProjectProvider>
-            <AppRoutes />
+            <SyncProvider>
+              <AppRoutes />
+            </SyncProvider>
           </ProjectProvider>
         </AuthProvider>
       </ToastProvider>

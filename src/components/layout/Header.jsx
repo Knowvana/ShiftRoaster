@@ -11,9 +11,10 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Menu, ChevronDown, LogOut, User, FolderOpen } from 'lucide-react';
+import { Menu, ChevronDown, LogOut, User, FolderOpen, Loader2 } from 'lucide-react';
 import { useAuth } from '@hooks/useAuth';
 import { useProject } from '@hooks/useProject';
+import { useSync } from '@context/SyncContext';
 
 // ---- Project Switcher Dropdown ----
 // Shows the current project name and a dropdown to switch projects
@@ -89,6 +90,7 @@ function ProjectSwitcher() {
 // ---- Main Header Component ----
 export default function Header({ onToggleSidebar }) {
   const { currentUser, logout } = useAuth();
+  const { isSyncing } = useSync();
 
   return (
     <header className="h-14 bg-gradient-to-r from-white via-white to-teal-50/50 border-b border-teal-100/60 flex items-center justify-between px-4 lg:px-6 flex-shrink-0">
@@ -108,8 +110,21 @@ export default function Header({ onToggleSidebar }) {
         <ProjectSwitcher />
       </div>
 
-      {/* Right side: user info + logout */}
+      {/* Right side: syncing indicator + user info + logout */}
       <div className="flex items-center gap-4">
+        {/* Syncing indicator */}
+        {isSyncing && (
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-50 border border-brand-200">
+            <Loader2 size={14} className="text-brand-600 animate-spin" />
+            <span className="text-xs font-medium text-brand-700 hidden sm:inline">
+              Syncing data from Google Sheets
+            </span>
+            <span className="text-xs font-medium text-brand-700 sm:hidden">
+              Syncing...
+            </span>
+          </div>
+        )}
+
         {/* User display */}
         <div className="flex items-center gap-2 text-sm text-slate-600">
           <div className="w-7 h-7 rounded-full bg-brand-100 flex items-center justify-center">

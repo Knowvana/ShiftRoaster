@@ -23,7 +23,7 @@ import {
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
 import { usePermissions } from '@hooks/usePermissions';
-import PageLoader from '@components/common/PageLoader';
+import { SkeletonCard, SkeletonLine } from '@components/common/SkeletonLoader';
 import {
   getEmailConfig,
   fetchEmailConfig,
@@ -56,37 +56,37 @@ function ToggleSwitch({ enabled, onChange, label, description }) {
   );
 }
 
-// ---- Email Type Configuration Card ----
+// ---- Email Type Configuration Card (Compact Grid) ----
 function EmailTypeCard({ icon: Icon, title, description, color, config, onChange, children }) {
   return (
-    <div className="card p-5 space-y-3">
+    <div className={`rounded-lg border-2 transition-all ${config.enabled ? 'border-brand-300 bg-brand-50' : 'border-slate-200 bg-white'}`}>
       {/* Header */}
-      <div className="flex items-start gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
-          <Icon size={20} className="text-white" />
+      <div className="p-3 flex items-start gap-2">
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
+          <Icon size={16} className="text-white" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-            <button
-              type="button"
-              onClick={() => onChange({ ...config, enabled: !config.enabled })}
-              className={`flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 flex items-center px-0.5
-                ${config.enabled ? 'bg-brand-500' : 'bg-slate-300'}`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200
-                ${config.enabled ? 'translate-x-4' : 'translate-x-0'}`}
-              />
-            </button>
-          </div>
-          <p className="text-xs text-slate-400 mt-0.5">{description}</p>
+          <h3 className="text-xs font-bold text-slate-800 truncate">{title}</h3>
+          <p className="text-[10px] text-slate-500 mt-0.5 line-clamp-2">{description}</p>
         </div>
+        <button
+          type="button"
+          onClick={() => onChange({ ...config, enabled: !config.enabled })}
+          className={`flex-shrink-0 w-8 h-5 rounded-full transition-colors duration-200 flex items-center px-0.5
+            ${config.enabled ? 'bg-brand-500' : 'bg-slate-300'}`}
+        >
+          <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform duration-200
+            ${config.enabled ? 'translate-x-3' : 'translate-x-0'}`}
+          />
+        </button>
       </div>
 
       {/* Settings (only shown when enabled) */}
       {config.enabled && (
-        <div className="pl-13 space-y-2 border-t border-slate-100 pt-3">
-          {children}
+        <div className="px-3 pb-3 space-y-2 border-t border-slate-100 pt-2">
+          <div className="space-y-1.5 text-[11px]">
+            {children}
+          </div>
         </div>
       )}
     </div>
@@ -182,11 +182,6 @@ export default function EmailConfigPage() {
     }
   };
 
-  // ---- Loading State ----
-  if (isLoading) {
-    return <PageLoader message="Loading email settings..." />;
-  }
-
   // ---- No Project State ----
   if (!currentProject) {
     return (
@@ -196,6 +191,23 @@ export default function EmailConfigPage() {
         </div>
         <h2 className="text-xl font-semibold text-slate-800 mb-2">No Project Selected</h2>
         <p className="text-sm text-slate-500">Select or create a project to configure email notifications.</p>
+      </div>
+    );
+  }
+
+  // ---- Loading State (skeleton) ----
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="space-y-2">
+          <SkeletonLine width="w-1/3" height="h-6" />
+          <SkeletonLine width="w-2/3" height="h-4" />
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <SkeletonCard key={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -246,8 +258,8 @@ export default function EmailConfigPage() {
         </div>
       )}
 
-      {/* ---- Email Type Cards ---- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ---- Email Type Cards (Compact Grid) ---- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
 
         {/* Shift Start Email */}
         <EmailTypeCard

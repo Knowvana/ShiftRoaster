@@ -28,6 +28,7 @@ import {
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
 import { usePermissions } from '@hooks/usePermissions';
+import { useSync } from '@context/SyncContext';
 import PageLoader from '@components/common/PageLoader';
 import { getMembers, fetchMembers } from '@services/memberService';
 import { getShifts, fetchShifts } from '@services/shiftService';
@@ -38,6 +39,10 @@ import {
 } from '@services/rosterService';
 import { generateRoster, adjustForLeave } from '@services/rosterEngine';
 import { exportRosterToExcel } from '@utils/exportExcel';
+import {
+  getOnCallAssignments, saveOnCallAssignments, fetchOnCallAssignments,
+  syncOnCallAssignments, getOnCallCounts,
+} from '@services/onCallService';
 import appConfig from '@config/app.json';
 
 // ---- Constants ----
@@ -383,7 +388,7 @@ function cleanAssignments(assignments, shiftMap) {
 // MONTHLY VIEW
 // ============================================================================
 
-function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, selectedMonth, onCellChange }) {
+function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, selectedMonth, onCellChange, onCallAssignments }) {
   const totalDays = getDaysInMonth(selectedYear, selectedMonth);
 
   // Build day headers
@@ -424,6 +429,24 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
     }
     return counts;
   }, [assignments, members, totalDays]);
+
+  // Per-member summary: WO, Leave, Shift days, On-call days
+  const memberSummary = useMemo(() => {
+    const summary = {};
+    for (const member of members) {
+      let woCount = 0, leaveCount = 0, shiftCount = 0, onCallCount = 0;
+      for (let day = 1; day <= totalDays; day++) {
+        const dayStr = String(day);
+        const code = assignments[member.id]?.[dayStr];
+        if (code === 'WO') woCount++;
+        else if (code && !shiftMap[code]?.isWorkingShift) leaveCount++;
+        else if (code && shiftMap[code]?.isWorkingShift) shiftCount++;
+        if (onCallAssignments[member.id]?.[dayStr]) onCallCount++;
+      }
+      summary[member.id] = { woCount, leaveCount, shiftCount, onCallCount };
+    }
+    return summary;
+  }, [assignments, members, totalDays, shiftMap, onCallAssignments]);
 
   return (
     <div className="card overflow-hidden">
@@ -476,21 +499,48 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                     />
                   );
                 })}
-                <td className="px-2 py-1 text-[9px] text-slate-500 border-l border-b border-slate-100 text-left whitespace-nowrap">
-                  {memberShiftCounts[member.id] && (
-                    <div className="flex flex-wrap gap-0.5">
-                      {Object.entries(memberShiftCounts[member.id])
-                        .filter(([code]) => shiftMap[code])
-                        .map(([code, count]) => (
-                          <span key={code} className="inline-flex items-center px-1 rounded text-white font-bold" style={{ backgroundColor: shiftMap[code].color, fontSize: '8px' }}>
-                            {code}:{count}
-                          </span>
-                        ))}
+                <td className="px-2 py-1 text-[8px] text-slate-600 border-l border-b border-slate-100 text-left whitespace-nowrap">
+                  {memberSummary[member.id] && (
+                    <div className="flex flex-wrap gap-1">
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-200 text-slate-700 font-bold">
+                        WO:{memberSummary[member.id].woCount}
+                      </span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-amber-200 text-amber-700 font-bold">
+                        Lv:{memberSummary[member.id].leaveCount}
+                      </span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-700 font-bold">
+                        WD:{memberSummary[member.id].shiftCount}
+                      </span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-purple-200 text-purple-700 font-bold">
+                        OC:{memberSummary[member.id].onCallCount}
+                      </span>
                     </div>
                   )}
                 </td>
               </tr>
             ))}
+            {/* On-Call row */}
+            <tr className="bg-gradient-to-r from-purple-50 to-pink-50 border-t border-purple-200">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-purple-50 to-pink-50 px-3 py-2 text-[10px] font-bold text-purple-700 text-left border-r border-purple-200 uppercase tracking-wide">
+                📞 On-Call
+              </td>
+              {dayHeaders.map(({ day }) => {
+                let weekdayCount = 0, weekendCount = 0;
+                for (const [memberId, days] of Object.entries(onCallAssignments)) {
+                  const type = days[String(day)];
+                  if (type === 'weekday') weekdayCount++;
+                  else if (type === 'weekend') weekendCount++;
+                }
+                const hasOnCall = weekdayCount > 0 || weekendCount > 0;
+                return (
+                  <td key={day} className={`px-0 py-2 text-[10px] font-bold border border-purple-100 text-center transition-colors ${hasOnCall ? 'bg-purple-100 text-purple-700' : 'bg-slate-50 text-slate-300'}`}>
+                    {weekdayCount > 0 && <div>WD:{weekdayCount}</div>}
+                    {weekendCount > 0 && <div>WE:{weekendCount}</div>}
+                  </td>
+                );
+              })}
+              <td className="px-2 py-2 border-l border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50" />
+            </tr>
             {/* Daily availability row */}
             <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-t-2 border-emerald-200">
               <td className="sticky left-0 z-10 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2.5 text-[10px] font-bold text-emerald-700 text-left border-r border-emerald-200 uppercase tracking-wide">
@@ -534,8 +584,9 @@ export default function RosterPage() {
   const [members, setMembers] = useState([]);
   const [shifts, setShifts] = useState([]);
   const [assignments, setAssignments] = useState({});
+  const [onCallAssignments, setOnCallAssignments] = useState({});
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
+  const { isSyncing, startSync, stopSync } = useSync();
 
   // ---- Computed ----
   const totalDays = useMemo(() => getDaysInMonth(selectedYear, selectedMonth), [selectedYear, selectedMonth]);
@@ -562,23 +613,27 @@ export default function RosterPage() {
       .filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource');
     const cachedShifts = getShifts(currentProject.id);
     const cachedRoster = getRoster(currentProject.id, selectedYear, selectedMonth);
+    const cachedOnCall = getOnCallAssignments(currentProject.id, selectedYear, selectedMonth);
     setMembers(cachedMembers);
     setShifts(cachedShifts);
     setAssignments(cleanAssignments(cachedRoster?.assignments || {}, buildMap(cachedShifts)));
+    setOnCallAssignments(cachedOnCall);
     setHasUnsavedChanges(false);
 
     // Phase 2: Background refresh from backend
-    setIsSyncing(true);
+    startSync();
     Promise.all([
       fetchMembers(currentProject.id),
       fetchShifts(currentProject.id),
       fetchRoster(currentProject.id, selectedYear, selectedMonth),
-    ]).then(([m, s, r]) => {
+      fetchOnCallAssignments(currentProject.id, selectedYear, selectedMonth),
+    ]).then(([m, s, r, oc]) => {
       setMembers(m.filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource'));
       setShifts(s);
       setAssignments(cleanAssignments(r?.assignments || {}, buildMap(s)));
+      setOnCallAssignments(oc);
       setHasUnsavedChanges(false);
-    }).catch(() => {}).finally(() => setIsSyncing(false));
+    }).catch(() => {}).finally(() => stopSync());
   }, [currentProject, selectedYear, selectedMonth]);
 
   // Clamp selectedDay when month changes
@@ -728,9 +783,6 @@ export default function RosterPage() {
   return (
     <div className="space-y-4 animate-fade-in">
 
-      {/* ---- Background sync indicator (non-blocking) ---- */}
-      {isSyncing && <PageLoader message="Syncing..." />}
-
       {/* ---- Page Header ---- */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -825,6 +877,7 @@ export default function RosterPage() {
           members={members} shifts={shifts} shiftMap={shiftMap}
           assignments={assignments} selectedYear={selectedYear}
           selectedMonth={selectedMonth} onCellChange={canEdit ? handleCellChange : undefined}
+          onCallAssignments={onCallAssignments}
         />
       )}
 
