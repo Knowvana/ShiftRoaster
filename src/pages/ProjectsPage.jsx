@@ -41,17 +41,6 @@ function generatePassword(length = 12) {
   return result;
 }
 
-/** Generate a project admin username from project name */
-function generateUsername(projectName) {
-  const base = projectName
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^_|_$/g, '')
-    .substring(0, 20);
-  const suffix = Math.random().toString(36).substring(2, 5);
-  return `${base}_admin_${suffix}`;
-}
 
 /** Basic email format validation */
 function isValidEmail(email) {
@@ -170,7 +159,7 @@ function CreateProjectModal({ isOpen, onClose, onSubmit }) {
               <Shield size={12} className="text-brand-500" />
               Project Admin
             </h3>
-            <p className="text-[10px] text-slate-400 mb-3">A unique username and password will be auto-generated and emailed to the admin.</p>
+            <p className="text-[10px] text-slate-400 mb-3">The admin email will be used as the login username. A password will be auto-generated and emailed.</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Admin Email <span className="text-rose-500">*</span></label>
@@ -284,18 +273,17 @@ function EditProjectModal({ isOpen, onClose, project, admin, onSave, onResetPass
 
         {/* Body */}
         <div className="px-6 py-5 space-y-5">
-          {/* Project metadata (read-only) */}
-          <div className="flex items-center gap-4 text-[11px] text-slate-400">
-            <span className="flex items-center gap-1"><Hash size={11} /> ID: <code className="font-mono bg-slate-100 px-1 rounded">{project.id}</code></span>
-            <span className="flex items-center gap-1"><Calendar size={11} /> Created: {new Date(project.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-          </div>
-
           {/* Project details */}
           <div>
             <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <FolderOpen size={12} className="text-brand-500" />
               Project Details
             </h3>
+            {/* Read-only metadata */}
+            <div className="flex items-center gap-4 text-[11px] text-slate-400 mb-3">
+              <span className="flex items-center gap-1"><Hash size={11} /> ID: <code className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">{project.id}</code></span>
+              <span className="flex items-center gap-1"><Calendar size={11} /> Created: {new Date(project.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Project Name <span className="text-rose-500">*</span></label>
@@ -331,12 +319,12 @@ function EditProjectModal({ isOpen, onClose, project, admin, onSave, onResetPass
                   </div>
                 </div>
 
-                {/* Read-only username + action buttons */}
+                {/* Read-only login username + action buttons */}
                 <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 space-y-3">
                   <div className="flex items-center gap-3 text-xs text-slate-500">
                     <User size={13} className="text-slate-400" />
                     <span>Login Username:</span>
-                    <code className="bg-white px-2 py-0.5 rounded font-mono text-[11px] border border-slate-200 text-slate-700">{admin.username}</code>
+                    <code className="bg-white px-2 py-0.5 rounded font-mono text-[11px] border border-slate-200 text-slate-700">{admin.email || admin.username}</code>
                   </div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
@@ -385,49 +373,92 @@ function EditProjectModal({ isOpen, onClose, project, admin, onSave, onResetPass
 }
 
 // ============================================================================
-// CREDENTIALS DISPLAY (inline banner after create/reset)
+// CREDENTIALS MODAL (popup after create/reset)
 // ============================================================================
 
-function CredentialsDisplay({ username, password, onClose }) {
+function CredentialsModal({ isOpen, onClose, username, password, adminEmail, projectName }) {
   const [showPassword, setShowPassword] = useState(true);
   const copyToClipboard = (text) => { navigator.clipboard.writeText(text).catch(() => {}); };
 
   return (
-    <div className="card p-5 bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 space-y-3 animate-slide-up">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Key size={16} className="text-emerald-600" />
-          <h3 className="text-sm font-bold text-emerald-800">Project Admin Credentials Generated</h3>
+    <ModalOverlay isOpen={isOpen} onClose={onClose}>
+      <div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-emerald-50 to-teal-50 rounded-t-2xl">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-emerald-500 rounded-lg flex items-center justify-center">
+              <Key size={18} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-800">Project Admin Credentials</h2>
+              <p className="text-[11px] text-slate-500">Save these credentials — the password cannot be recovered</p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-white/60 transition-colors">
+            <X size={18} />
+          </button>
         </div>
-        <button onClick={onClose} className="p-1 rounded hover:bg-emerald-100 text-emerald-500 hover:text-emerald-700">
-          <X size={14} />
-        </button>
-      </div>
-      <p className="text-xs text-emerald-700">Save these credentials — the password cannot be recovered after dismissing.</p>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div className="bg-white rounded-lg p-3 border border-emerald-200">
-          <label className="text-[10px] font-semibold text-slate-500 uppercase">Username</label>
-          <div className="flex items-center gap-2 mt-1">
-            <code className="text-sm font-mono text-slate-800 flex-1">{username}</code>
-            <button onClick={() => copyToClipboard(username)} className="p-1 rounded hover:bg-slate-100" title="Copy username">
-              <Copy size={14} className="text-slate-400" />
-            </button>
+
+        {/* Body */}
+        <div className="px-6 py-5 space-y-5">
+          {/* Credentials Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <tbody>
+                {/* Project Row */}
+                <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50 w-32">Project</td>
+                  <td className="px-4 py-3 text-sm font-medium text-slate-800">{projectName}</td>
+                  <td className="px-4 py-3"></td>
+                </tr>
+
+                {/* Username Row */}
+                <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50">Login Username</td>
+                  <td className="px-4 py-3">
+                    <code className="text-sm font-mono text-slate-800 break-all">{username}</code>
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => copyToClipboard(username)} className="p-1.5 rounded hover:bg-emerald-100 transition-colors" title="Copy username">
+                      <Copy size={16} className="text-emerald-600" />
+                    </button>
+                  </td>
+                </tr>
+
+                {/* Password Row */}
+                <tr className="border-b border-slate-200 hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider bg-slate-50">Password</td>
+                  <td className="px-4 py-3">
+                    <code className="text-sm font-mono text-slate-800">{showPassword ? password : '••••••••••••'}</code>
+                  </td>
+                  <td className="px-4 py-3 text-right flex items-center justify-end gap-1">
+                    <button onClick={() => setShowPassword(!showPassword)} className="p-1.5 rounded hover:bg-emerald-100 transition-colors" title="Toggle visibility">
+                      {showPassword ? <EyeOff size={16} className="text-emerald-600" /> : <Eye size={16} className="text-emerald-600" />}
+                    </button>
+                    <button onClick={() => copyToClipboard(password)} className="p-1.5 rounded hover:bg-emerald-100 transition-colors" title="Copy password">
+                      <Copy size={16} className="text-emerald-600" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Admin email info */}
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex items-start gap-2 text-xs text-blue-700">
+            <Mail size={14} className="text-blue-600 flex-shrink-0 mt-0.5" />
+            <span>Credentials have been emailed to Project Admin <strong>{adminEmail}</strong></span>
           </div>
         </div>
-        <div className="bg-white rounded-lg p-3 border border-emerald-200">
-          <label className="text-[10px] font-semibold text-slate-500 uppercase">Password</label>
-          <div className="flex items-center gap-2 mt-1">
-            <code className="text-sm font-mono text-slate-800 flex-1">{showPassword ? password : '••••••••••••'}</code>
-            <button onClick={() => setShowPassword(!showPassword)} className="p-1 rounded hover:bg-slate-100" title="Toggle visibility">
-              {showPassword ? <EyeOff size={14} className="text-slate-400" /> : <Eye size={14} className="text-slate-400" />}
-            </button>
-            <button onClick={() => copyToClipboard(password)} className="p-1 rounded hover:bg-slate-100" title="Copy password">
-              <Copy size={14} className="text-slate-400" />
-            </button>
-          </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+          <button type="button" onClick={onClose} className="px-5 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors">
+            Done
+          </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }
 
@@ -488,8 +519,6 @@ function ProjectCard({ project, isCurrent, admin, onSwitch, onDelete, onEdit }) 
         <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-500 flex-wrap">
           <User size={13} className="text-slate-400" />
           <span>Admin: <strong className="text-slate-700">{admin.displayName}</strong></span>
-          <span className="text-slate-300">|</span>
-          <code className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded font-mono">{admin.username}</code>
           {admin.email && (
             <>
               <span className="text-slate-300">|</span>
@@ -508,7 +537,7 @@ function ProjectCard({ project, isCurrent, admin, onSwitch, onDelete, onEdit }) 
 
 export default function ProjectsPage() {
   const { projects, currentProject, createProject, switchProject, deleteProject, updateProject } = useProject();
-  const { admins, addAdmin, removeAdmin, changePassword, currentUser } = useAuth();
+  const { admins, addAdmin, removeAdmin, changePassword, updateAdmin, currentUser } = useAuth();
   const { showToast } = useToast();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -530,19 +559,6 @@ export default function ProjectsPage() {
     return map;
   }, [admins]);
 
-  /** Helper: update admin fields in localStorage + backend */
-  const updateAdminField = useCallback((username, updates) => {
-    const storedAdmins = JSON.parse(localStorage.getItem('shiftRoster_admins') || '[]');
-    const idx = storedAdmins.findIndex((a) => a.username === username);
-    if (idx >= 0) {
-      Object.assign(storedAdmins[idx], updates);
-      localStorage.setItem('shiftRoster_admins', JSON.stringify(storedAdmins));
-      if (isBackendConfigured()) {
-        apiPost('saveAdmins', { data: storedAdmins }).catch(() => {});
-      }
-    }
-  }, []);
-
   /** Helper: send credentials email */
   const sendCredentialsEmail = useCallback((payload) => {
     if (!isBackendConfigured()) return Promise.reject(new Error('Backend not configured'));
@@ -552,18 +568,19 @@ export default function ProjectsPage() {
   // ---- CREATE ----
   const handleCreate = useCallback(({ name, description, adminEmail, adminDisplayName }) => {
     const project = createProject(name, description);
-    const username = generateUsername(name);
+    // Use the admin email as the username
+    const username = adminEmail;
     const password = generatePassword(12);
 
-    const result = addAdmin(username, password, adminDisplayName, 'project_admin', [project.id]);
+    const result = addAdmin(username, password, adminDisplayName, 'project_admin', [project.id], adminEmail);
     if (!result.success) {
       showToast(`Project created, but admin account failed: ${result.message}`, 'error');
       setIsCreateOpen(false);
       return;
     }
 
-    updateAdminField(username, { email: adminEmail });
-    setNewCredentials({ username, password, projectName: name });
+    // Show credentials in modal popup
+    setNewCredentials({ username, password, projectName: name, adminEmail });
     setIsCreateOpen(false);
 
     sendCredentialsEmail({
@@ -574,19 +591,20 @@ export default function ProjectsPage() {
     }).catch(() => {
       showToast(`Project "${name}" created! Email failed — share credentials manually.`, 'info');
     });
-  }, [createProject, addAdmin, updateAdminField, sendCredentialsEmail, currentUser, showToast]);
+  }, [createProject, addAdmin, sendCredentialsEmail, currentUser, showToast]);
 
   // ---- EDIT SAVE ----
   const handleEditSave = useCallback(({ projectId, name, description, adminEmail, adminDisplayName, adminUsername }) => {
     updateProject(projectId, { name, description });
 
     if (adminUsername) {
-      updateAdminField(adminUsername, { email: adminEmail, displayName: adminDisplayName });
+      // Use updateAdmin from AuthContext to sync email and displayName to backend
+      updateAdmin(adminUsername, { email: adminEmail, displayName: adminDisplayName });
     }
 
     setEditingProject(null);
     showToast(`Project "${name}" updated!`, 'success');
-  }, [updateProject, updateAdminField, showToast]);
+  }, [updateProject, updateAdmin, showToast]);
 
   // ---- RESET PASSWORD ----
   const handleResetPassword = useCallback((projectId, username) => {
@@ -598,12 +616,12 @@ export default function ProjectsPage() {
 
     const admin = admins.find((a) => a.username === username);
     const project = projects.find((p) => p.id === projectId);
-    setNewCredentials({ username, password: newPassword, projectName: project?.name || 'Unknown' });
+    setNewCredentials({ username: admin?.email || username, password: newPassword, projectName: project?.name || 'Unknown', adminEmail: admin?.email || '' });
 
     if (isBackendConfigured() && admin?.email) {
       sendCredentialsEmail({
         projectId, projectName: project?.name || '', adminEmail: admin.email,
-        adminDisplayName: admin.displayName, username, password: newPassword,
+        adminDisplayName: admin.displayName, username: admin.email, password: newPassword,
         siteAdminEmail: currentUser?.email || '', isReset: true,
       }).then(() => showToast(`Password reset! Emailed to ${admin.email}`, 'success'))
         .catch(() => showToast('Password reset! Email failed — share manually.', 'info'));
@@ -623,11 +641,11 @@ export default function ProjectsPage() {
     if (!result.success) { showToast(`Failed: ${result.message}`, 'error'); return; }
 
     const project = projects.find((p) => p.id === projectId);
-    setNewCredentials({ username, password: newPassword, projectName: project?.name || 'Unknown' });
+    setNewCredentials({ username: admin.email, password: newPassword, projectName: project?.name || 'Unknown', adminEmail: admin.email });
 
     sendCredentialsEmail({
       projectId, projectName: project?.name || '', adminEmail: admin.email,
-      adminDisplayName: admin.displayName, username, password: newPassword,
+      adminDisplayName: admin.displayName, username: admin.email, password: newPassword,
       siteAdminEmail: currentUser?.email || '', isReset: true,
     }).then(() => showToast(`New credentials emailed to ${admin.email}`, 'success'))
       .catch(() => showToast('Email failed — share credentials manually.', 'info'));
@@ -678,14 +696,15 @@ export default function ProjectsPage() {
         </button>
       </div>
 
-      {/* ---- Credentials Display ---- */}
-      {newCredentials && (
-        <CredentialsDisplay
-          username={newCredentials.username}
-          password={newCredentials.password}
-          onClose={() => setNewCredentials(null)}
-        />
-      )}
+      {/* ---- Credentials Modal ---- */}
+      <CredentialsModal
+        isOpen={!!newCredentials}
+        onClose={() => setNewCredentials(null)}
+        username={newCredentials?.username || ''}
+        password={newCredentials?.password || ''}
+        adminEmail={newCredentials?.adminEmail || ''}
+        projectName={newCredentials?.projectName || ''}
+      />
 
       {/* ---- Project List ---- */}
       {projects.length > 0 ? (

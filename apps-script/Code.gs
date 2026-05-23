@@ -1395,49 +1395,106 @@ function createLegendSheet(shifts) {
 
 /**
  * Send project admin credentials email to the project admin, CC site admin.
+ * Features a professional, branded email layout with welcome message,
+ * project details, login credentials, and admin support contact.
  */
 function sendProjectAdminCredentialsEmail(projectName, adminEmail, adminDisplayName, username, password, siteAdminEmail, isReset) {
   if (!adminEmail) return { success: false, error: 'No admin email provided' };
 
-  var actionLabel = isReset ? 'Password Reset' : 'Account Created';
-  var subject = '[Shift Roster] ' + actionLabel + ' — ' + projectName;
+  var actionLabel = isReset ? 'Password Reset' : 'Welcome to Shift Roster';
+  var subject = '[Shift Roster] ' + (isReset ? 'Password Reset' : 'Your Account is Ready') + ' — ' + projectName;
+  var year = new Date().getFullYear();
+  var displayName = adminDisplayName || 'Admin';
+  // Use email as the login username shown in the email
+  var loginUsername = adminEmail;
 
-  var html = '<!DOCTYPE html><html><body style="font-family:Arial,sans-serif;background:#f8fafc;margin:0;padding:0;">';
-  html += '<div style="max-width:560px;margin:24px auto;background:#ffffff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">';
+  var html = '<!DOCTYPE html><html><head><meta charset="utf-8"></head>';
+  html += '<body style="font-family:\'Segoe UI\',Arial,Helvetica,sans-serif;background:#f1f5f9;margin:0;padding:0;-webkit-font-smoothing:antialiased;">';
+  html += '<div style="max-width:600px;margin:0 auto;padding:24px 16px;">';
 
-  // Header
-  html += '<div style="background:linear-gradient(135deg,#0d9488,#059669);padding:24px 32px;text-align:center;">';
-  html += '<h1 style="color:#ffffff;font-size:20px;margin:0;">Shift Roster</h1>';
-  html += '<p style="color:#d1fae5;font-size:13px;margin:6px 0 0;">Project Admin ' + actionLabel + '</p>';
+  // ── Container card ──
+  html += '<div style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">';
+
+  // ── Header Banner ──
+  html += '<div style="background:linear-gradient(135deg,#0f766e 0%,#0d9488 50%,#14b8a6 100%);padding:36px 40px 32px;text-align:center;">';
+  html += '<div style="display:inline-block;background:rgba(255,255,255,0.2);border-radius:12px;padding:10px 14px;margin-bottom:16px;">';
+  html += '<span style="font-size:28px;line-height:1;">&#128197;</span>';
+  html += '</div>';
+  html += '<h1 style="color:#ffffff;font-size:26px;font-weight:700;margin:0;letter-spacing:-0.5px;">Shift Roster</h1>';
+  html += '<p style="color:rgba(255,255,255,0.85);font-size:13px;margin:8px 0 0;font-weight:400;">Smart Shift Management Platform</p>';
   html += '</div>';
 
-  // Body
-  html += '<div style="padding:28px 32px;">';
-  html += '<p style="font-size:14px;color:#334155;margin:0 0 16px;">Hi <strong>' + (adminDisplayName || 'Admin') + '</strong>,</p>';
-
+  // ── Action Badge ──
   if (isReset) {
-    html += '<p style="font-size:14px;color:#334155;margin:0 0 16px;">Your password for the project <strong>' + projectName + '</strong> has been reset by the site administrator.</p>';
+    html += '<div style="background:#fef3c7;border-bottom:1px solid #fde68a;padding:12px 40px;text-align:center;">';
+    html += '<span style="font-size:13px;font-weight:600;color:#92400e;">&#128274; Password Reset Notification</span>';
+    html += '</div>';
   } else {
-    html += '<p style="font-size:14px;color:#334155;margin:0 0 16px;">You have been assigned as the Project Admin for <strong>' + projectName + '</strong>. Your login credentials are below.</p>';
+    html += '<div style="background:#ecfdf5;border-bottom:1px solid #a7f3d0;padding:12px 40px;text-align:center;">';
+    html += '<span style="font-size:13px;font-weight:600;color:#065f46;">&#9989; Your Account Has Been Created</span>';
+    html += '</div>';
   }
 
-  // Credentials box
-  html += '<div style="background:#f0fdfa;border:1px solid #99f6e4;border-radius:8px;padding:16px 20px;margin:16px 0;">';
-  html += '<table style="width:100%;font-size:14px;color:#1e293b;">';
-  html += '<tr><td style="padding:6px 0;font-weight:bold;width:100px;color:#64748b;">Username:</td><td style="padding:6px 0;"><code style="background:#e2e8f0;padding:2px 8px;border-radius:4px;font-size:13px;">' + username + '</code></td></tr>';
-  html += '<tr><td style="padding:6px 0;font-weight:bold;color:#64748b;">Password:</td><td style="padding:6px 0;"><code style="background:#fef3c7;padding:2px 8px;border-radius:4px;font-size:13px;">' + password + '</code></td></tr>';
+  // ── Body ──
+  html += '<div style="padding:32px 40px 24px;">';
+
+  // Welcome greeting
+  html += '<p style="font-size:16px;color:#1e293b;margin:0 0 20px;line-height:1.6;">Hi <strong>' + displayName + '</strong>,</p>';
+
+  if (isReset) {
+    html += '<p style="font-size:14px;color:#475569;margin:0 0 20px;line-height:1.7;">Your password for the project <strong style="color:#0f766e;">' + projectName + '</strong> has been reset by the site administrator. Your updated login credentials are below.</p>';
+  } else {
+    html += '<p style="font-size:14px;color:#475569;margin:0 0 20px;line-height:1.7;">Welcome to <strong style="color:#0f766e;">Shift Roster</strong> — a comprehensive shift management platform designed to simplify roster planning, team scheduling, and shift coordination. With Shift Roster, you can create and manage shift schedules, track team availability, handle swap requests, and ensure smooth operations across your workforce.</p>';
+    html += '<p style="font-size:14px;color:#475569;margin:0 0 20px;line-height:1.7;">A new project has been created for you and you have been assigned as the <strong>Project Administrator</strong>. As a Project Admin, you can manage team members, configure shifts, generate rosters, and oversee all scheduling activities for your project.</p>';
+  }
+
+  // ── Project Details Card ──
+  html += '<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;margin:24px 0;">';
+  html += '<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#64748b;margin:0 0 12px;font-weight:700;">&#128193; Project Details</h3>';
+  html += '<table style="width:100%;border-collapse:collapse;">';
+  html += '<tr><td style="padding:8px 0;font-size:13px;color:#64748b;font-weight:600;width:130px;vertical-align:top;">Project Name:</td>';
+  html += '<td style="padding:8px 0;font-size:14px;color:#1e293b;font-weight:600;">' + projectName + '</td></tr>';
+  if (siteAdminEmail) {
+    html += '<tr><td style="padding:8px 0;font-size:13px;color:#64748b;font-weight:600;vertical-align:top;">Created By:</td>';
+    html += '<td style="padding:8px 0;font-size:14px;color:#1e293b;">' + siteAdminEmail + '</td></tr>';
+  }
   html += '</table>';
   html += '</div>';
 
-  html += '<p style="font-size:12px;color:#94a3b8;margin:16px 0 0;">Please change your password after first login. Do not share these credentials.</p>';
+  // ── Credentials Card ──
+  html += '<div style="background:linear-gradient(135deg,#f0fdf4 0%,#ecfdf5 100%);border:1px solid #86efac;border-radius:12px;padding:20px 24px;margin:24px 0;">';
+  html += '<h3 style="font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#166534;margin:0 0 16px;font-weight:700;">&#128272; Your Login Credentials</h3>';
+  html += '<table style="width:100%;border-collapse:collapse;">';
+  html += '<tr><td style="padding:10px 0;font-size:13px;color:#166534;font-weight:600;width:130px;vertical-align:middle;">Login Username:</td>';
+  html += '<td style="padding:10px 0;"><span style="background:#ffffff;border:1px solid #bbf7d0;padding:6px 14px;border-radius:6px;font-size:14px;color:#1e293b;font-weight:500;display:inline-block;">' + loginUsername + '</span></td></tr>';
+  html += '<tr><td style="padding:10px 0;font-size:13px;color:#166534;font-weight:600;vertical-align:middle;">Password:</td>';
+  html += '<td style="padding:10px 0;"><span style="background:#ffffff;border:1px solid #bbf7d0;padding:6px 14px;border-radius:6px;font-family:\'Courier New\',monospace;font-size:14px;color:#1e293b;font-weight:600;letter-spacing:0.5px;display:inline-block;">' + password + '</span></td></tr>';
+  html += '</table>';
   html += '</div>';
 
-  // Footer
-  html += '<div style="background:#f1f5f9;padding:16px 32px;text-align:center;border-top:1px solid #e2e8f0;">';
-  html += '<p style="font-size:11px;color:#94a3b8;margin:0;">Sent by Shift Roster &copy; ' + new Date().getFullYear() + '</p>';
+  // ── Security Notice ──
+  html += '<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 20px;margin:20px 0;">';
+  html += '<p style="font-size:12px;color:#92400e;margin:0;line-height:1.6;">&#9888;&#65039; <strong>Security Notice:</strong> Please keep these credentials secure and do not share them with anyone. We recommend changing your password after your first login.</p>';
   html += '</div>';
 
-  html += '</div></body></html>';
+  // ── Support Contact ──
+  if (siteAdminEmail) {
+    html += '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 20px;margin:20px 0;">';
+    html += '<p style="font-size:12px;color:#1e40af;margin:0;line-height:1.6;">&#128231; <strong>Need Help?</strong> If you have any questions or encounter any issues, please contact your site administrator at <a href="mailto:' + siteAdminEmail + '" style="color:#2563eb;font-weight:600;text-decoration:none;">' + siteAdminEmail + '</a></p>';
+    html += '</div>';
+  }
+
+  html += '</div>'; // end body
+
+  // ── Footer ──
+  html += '<div style="background:#f8fafc;padding:20px 40px;text-align:center;border-top:1px solid #e2e8f0;">';
+  html += '<p style="font-size:12px;color:#94a3b8;margin:0 0 4px;">This is an automated message from Shift Roster.</p>';
+  html += '<p style="font-size:11px;color:#cbd5e1;margin:0;">&copy; ' + year + ' Shift Roster &mdash; Smart Shift Management Platform</p>';
+  html += '</div>';
+
+  html += '</div>'; // end container card
+  html += '</div>'; // end outer padding
+  html += '</body></html>';
 
   try {
     var emailOptions = {

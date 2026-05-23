@@ -162,7 +162,7 @@ export function AuthProvider({ children }) {
    * Add a new admin account.
    * Returns { success: true } or { success: false, message: '...' }
    */
-  const addAdmin = useCallback((username, password, displayName, role = 'resource', projectIds = []) => {
+  const addAdmin = useCallback((username, password, displayName, role = 'resource', projectIds = [], email = '') => {
     // Check if username already exists
     const exists = admins.some((admin) => admin.username === username);
     if (exists) {
@@ -175,6 +175,7 @@ export function AuthProvider({ children }) {
       displayName,
       role,
       projectIds,
+      email: email || '',
     };
 
     const updatedAdmins = [...admins, newAdmin];
@@ -192,7 +193,7 @@ export function AuthProvider({ children }) {
   }, [admins]);
 
   /**
-   * Update an admin's role and project assignments.
+   * Update an admin's role, project assignments, display name, and email.
    */
   const updateAdmin = useCallback((username, updates) => {
     const updatedAdmins = admins.map((admin) => {
@@ -202,6 +203,7 @@ export function AuthProvider({ children }) {
           ...(updates.displayName !== undefined && { displayName: updates.displayName }),
           ...(updates.role !== undefined && { role: updates.role }),
           ...(updates.projectIds !== undefined && { projectIds: updates.projectIds }),
+          ...(updates.email !== undefined && { email: updates.email }),
         };
       }
       return admin;
