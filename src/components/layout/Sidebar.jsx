@@ -22,6 +22,7 @@ import {
   X,
   Shield,
   Mail,
+  BookOpen,
 } from 'lucide-react';
 import appConfig from '@config/app.json';
 import { usePermissions } from '@hooks/usePermissions';
@@ -38,6 +39,8 @@ const NAV_ITEMS = [
   { label: 'Swap Requests', path: '/swaps',        icon: ArrowLeftRight,  minRole: 'project_admin' },
   { label: 'Email Config',  path: '/email-config', icon: Mail,            minRole: 'project_admin' },
   { label: 'Projects',      path: '/projects',     icon: FolderOpen,      minRole: 'site_admin' },
+  { type: 'separator' },
+  { label: 'Documentation', path: '/docs',         icon: BookOpen,        minRole: 'public' },
 ];
 
 // ---- Single Nav Link Component ----
@@ -70,6 +73,7 @@ export default function Sidebar({ isOpen, onClose }) {
 
   const visibleItems = useMemo(() => {
     return NAV_ITEMS.filter((item) => {
+      if (item.type === 'separator') return true; // Always show separators
       if (item.minRole === 'public') return true; // Always visible
       if (!isLoggedIn) return false; // Hide admin items when not logged in
       if (item.minRole === 'site_admin') return isSiteAdmin;
@@ -126,9 +130,11 @@ export default function Sidebar({ isOpen, onClose }) {
 
           {/* ---- Navigation Links ---- */}
           <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-            {visibleItems.map((item) => (
-              <SidebarLink key={item.path} item={item} onClick={onClose} />
-            ))}
+            {visibleItems.map((item, index) =>
+              item.type === 'separator'
+                ? <div key={`sep-${index}`} className="my-2 border-t border-slate-200" />
+                : <SidebarLink key={item.path} item={item} onClick={onClose} />
+            )}
           </nav>
 
           {/* ---- Footer ---- */}

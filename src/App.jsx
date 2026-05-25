@@ -30,6 +30,7 @@ import ShiftsPage from '@pages/ShiftsPage';
 import SwapRequestsPage from '@pages/SwapRequestsPage';
 import ProjectsPage from '@pages/ProjectsPage';
 import EmailConfigPage from '@pages/EmailConfigPage';
+import DocumentationPage from '@pages/DocumentationPage';
 import { useAuth } from '@hooks/useAuth';
 
 // ---- Loading Spinner ----
@@ -102,6 +103,9 @@ function AppRoutes() {
         <Route path="swaps" element={<AdminRoute><SwapRequestsPage /></AdminRoute>} />
         <Route path="projects" element={<AdminRoute><ProjectsPage /></AdminRoute>} />
         <Route path="email-config" element={<AdminRoute><EmailConfigPage /></AdminRoute>} />
+
+        {/* Public pages */}
+        <Route path="docs" element={<DocumentationPage />} />
       </Route>
 
       {/* Catch-all: redirect unknown routes to dashboard */}
