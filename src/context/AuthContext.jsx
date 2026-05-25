@@ -84,37 +84,28 @@ function loadSession() {
 
 // ---- Auth Provider Component ----
 export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [admins, setAdmins] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  // Restore session and admins synchronously from localStorage on first render.
+  // This eliminates the loading flash — returning users see the dashboard immediately.
+  const [currentUser, setCurrentUser] = useState(() => loadSession());
+  const [admins, setAdmins] = useState(() => loadAdmins());
+  const [isLoading, setIsLoading] = useState(false);
 
-  // On mount: load admins from backend (or localStorage fallback) and restore session
+  // On mount: sync admins from backend if configured (non-blocking)
   useEffect(() => {
-    async function init() {
-      let adminList = loadAdmins();
+    if (!isBackendConfigured()) return;
 
-      if (isBackendConfigured()) {
-        try {
-          const res = await apiGet('getAdmins');
-          if (res.data && res.data.length > 0) {
-            adminList = res.data;
-            localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(adminList));
-          }
-        } catch (err) {
-          console.warn('[AuthContext] Backend fetch failed, using localStorage:', err.message);
+    async function syncAdminsFromBackend() {
+      try {
+        const res = await apiGet('getAdmins');
+        if (res.data && res.data.length > 0) {
+          setAdmins(res.data);
+          localStorage.setItem(STORAGE_KEY_ADMINS, JSON.stringify(res.data));
         }
+      } catch (err) {
+        console.warn('[AuthContext] Backend fetch failed, using localStorage:', err.message);
       }
-
-      setAdmins(adminList);
-
-      const savedSession = loadSession();
-      if (savedSession) {
-        setCurrentUser(savedSession);
-      }
-
-      setIsLoading(false);
     }
-    init();
+    syncAdminsFromBackend();
   }, []);
 
   /**

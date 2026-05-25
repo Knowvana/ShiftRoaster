@@ -56,48 +56,57 @@ function saveProjects(projects) {
   localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
 }
 
+/**
+ * Synchronously restore the current project from localStorage.
+ * Returns the project object or null.
+ */
+function loadCurrentProject(allProjects) {
+  const savedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT);
+  if (savedCurrentId && allProjects.length > 0) {
+    return allProjects.find((p) => p.id === savedCurrentId) || allProjects[0];
+  }
+  return allProjects.length > 0 ? allProjects[0] : null;
+}
+
 // ---- Project Provider Component ----
 export function ProjectProvider({ children }) {
-  const [projects, setProjects] = useState([]);
-  const [currentProject, setCurrentProject] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Restore projects and current project synchronously from localStorage on first render.
+  // This eliminates the "No Project Selected" flash — returning users see data immediately.
+  const [projects, setProjects] = useState(() => loadProjects());
+  const [currentProject, setCurrentProject] = useState(() => loadCurrentProject(loadProjects()));
+  const [isLoading, setIsLoading] = useState(false);
   const authContext = useContext(AuthContext);
   const currentUser = authContext?.currentUser;
 
-  // On mount: load projects from backend (or localStorage fallback)
+  // On mount: sync projects from backend if configured (non-blocking)
   useEffect(() => {
-    async function init() {
-      let allProjects = loadProjects(); // Start with local cache
+    if (!isBackendConfigured()) return;
 
-      if (isBackendConfigured()) {
-        try {
-          const res = await apiGet('getProjects');
-          if (res.data && res.data.length > 0) {
-            allProjects = res.data;
-            saveProjects(allProjects); // Update local cache
-          } else if (allProjects.length > 0) {
-            // Backend is empty but local has data — push local to backend
-            await apiPost('saveProjects', { data: allProjects });
+    async function syncProjectsFromBackend() {
+      try {
+        const res = await apiGet('getProjects');
+        if (res.data && res.data.length > 0) {
+          setProjects(res.data);
+          saveProjects(res.data);
+
+          // If current project was updated in backend, refresh it
+          const savedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT);
+          if (savedCurrentId) {
+            const found = res.data.find((p) => p.id === savedCurrentId);
+            if (found) setCurrentProject(found);
           }
-        } catch (err) {
-          console.warn('[ProjectContext] Backend fetch failed, using localStorage:', err.message);
+        } else {
+          // Backend is empty but local has data — push local to backend
+          const localProjects = loadProjects();
+          if (localProjects.length > 0) {
+            await apiPost('saveProjects', { data: localProjects });
+          }
         }
+      } catch (err) {
+        console.warn('[ProjectContext] Backend fetch failed, using localStorage:', err.message);
       }
-
-      setProjects(allProjects);
-
-      // Try to restore the last selected project
-      const savedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT);
-      if (savedCurrentId && allProjects.length > 0) {
-        const found = allProjects.find((p) => p.id === savedCurrentId);
-        setCurrentProject(found || allProjects[0]);
-      } else if (allProjects.length > 0) {
-        setCurrentProject(allProjects[0]);
-      }
-
-      setIsLoading(false);
     }
-    init();
+    syncProjectsFromBackend();
   }, []);
 
   /**

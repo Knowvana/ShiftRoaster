@@ -32,10 +32,25 @@ import ProjectsPage from '@pages/ProjectsPage';
 import EmailConfigPage from '@pages/EmailConfigPage';
 import { useAuth } from '@hooks/useAuth';
 
+// ---- Loading Spinner ----
+// Shown while auth state is being restored from localStorage/backend
+function AuthLoadingScreen() {
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 to-teal-50">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-3 border-teal-200 border-t-teal-600 rounded-full animate-spin" />
+        <p className="text-sm text-slate-500 font-medium">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
 // ---- Admin Route Wrapper ----
 // Only allows access if the user is logged in
 function AdminRoute({ children }) {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, isLoading } = useAuth();
+
+  if (isLoading) return <AuthLoadingScreen />;
 
   if (!isLoggedIn) {
     return <Navigate to="/login" replace />;
@@ -47,7 +62,9 @@ function AdminRoute({ children }) {
 // ---- Login Route Wrapper ----
 // Redirects to dashboard if already logged in
 function LoginRoute({ children }) {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, isLoading } = useAuth();
+
+  if (isLoading) return <AuthLoadingScreen />;
 
   if (isLoggedIn) {
     return <Navigate to="/dashboard" replace />;
