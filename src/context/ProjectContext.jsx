@@ -197,9 +197,10 @@ export function ProjectProvider({ children }) {
     }
     keysToRemove.forEach((key) => localStorage.removeItem(key));
 
-    // Sync deletion to backend
+    // Sync deletion to backend (include project name so backend can delete formatted sheets)
+    const deletedProject = projects.find((p) => p.id === projectId);
     if (isBackendConfigured()) {
-      apiPost('deleteProject', { projectId }).catch((err) =>
+      apiPost('deleteProject', { projectId, projectName: deletedProject?.name || '' }).catch((err) =>
         console.warn('[ProjectContext] Failed to sync project deletion:', err.message)
       );
     }

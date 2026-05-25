@@ -244,9 +244,6 @@ function EditProjectModal({ isOpen, onClose, project, admin, onSave, onResetPass
   };
 
   const handleClose = () => {
-    if (hasChanges) {
-      if (!window.confirm('You have unsaved changes. Discard?')) return;
-    }
     onClose();
   };
 
@@ -608,8 +605,6 @@ export default function ProjectsPage() {
 
   // ---- RESET PASSWORD ----
   const handleResetPassword = useCallback((projectId, username) => {
-    if (!window.confirm(`Reset password for "${username}"? A new password will be generated.`)) return;
-
     const newPassword = generatePassword(12);
     const result = changePassword(username, newPassword);
     if (!result.success) { showToast(`Password reset failed: ${result.message}`, 'error'); return; }
@@ -634,7 +629,6 @@ export default function ProjectsPage() {
   const handleResendEmail = useCallback((projectId, username) => {
     const admin = admins.find((a) => a.username === username);
     if (!admin?.email) { showToast('No email set for this admin. Edit the project to add one first.', 'error'); return; }
-    if (!window.confirm(`Resend credentials to ${admin.email}?\nA new password will be generated and emailed.`)) return;
 
     const newPassword = generatePassword(12);
     const result = changePassword(username, newPassword);
@@ -655,13 +649,6 @@ export default function ProjectsPage() {
   const handleDelete = useCallback((projectId) => {
     const project = projects.find((p) => p.id === projectId);
     if (!project) return;
-
-    if (!window.confirm(
-      `Delete "${project.name}"? This will remove ALL data including:\n` +
-      `• All members, shifts, rosters, and swaps\n` +
-      `• All Google Sheets tabs for this project\n` +
-      `• The project admin account\n\nThis cannot be undone.`
-    )) return;
 
     const admin = projectAdminMap[projectId];
     if (admin) removeAdmin(admin.username);

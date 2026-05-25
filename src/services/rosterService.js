@@ -252,12 +252,14 @@ export async function fetchRoster(projectId, year, month) {
   try {
     const res = await apiGet('getRoster', { projectId, year, month });
     const roster = res.data;
-    if (roster) {
-      // Cache locally
+    if (roster && roster.assignments && Object.keys(roster.assignments).length > 0) {
+      // Only cache locally if backend has real roster data
       const key = getStorageKey(projectId, year, month);
       localStorage.setItem(key, JSON.stringify(roster));
+      return roster;
     }
-    return roster;
+    // Backend returned null/empty — keep local data
+    return getRoster(projectId, year, month);
   } catch {
     return getRoster(projectId, year, month);
   }

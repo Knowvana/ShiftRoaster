@@ -20,7 +20,7 @@
  * ============================================================================
  */
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Calendar, ChevronLeft, ChevronRight, Wand2,
   Trash2, Save, Users, Download, CalendarDays, CalendarRange, PhoneCall,
@@ -144,19 +144,36 @@ function RosterCell({ shiftCode, shiftColor, allShifts, onSelect, children }) {
 
 // ---- Shift Legend (shared by all views) ----
 function ShiftLegend({ shifts }) {
+  const summaryItems = [
+    { code: 'LV', name: 'Leave', color: '#fecaca' },
+    { code: 'WD', name: 'Working Days', color: '#e5e7eb' },
+    { code: 'OC', name: 'On-Call', color: '#c4b5fd' },
+  ];
+
   return (
-    <div className="card p-4">
-      <h3 className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-2">Shift Legend</h3>
-      <div className="flex flex-wrap gap-2">
+    <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 mb-3">
+      <div className="flex flex-wrap gap-1.5 items-center">
+        <span className="text-[9px] font-semibold text-slate-600 uppercase tracking-wide mr-1">Shift Legend:</span>
         {shifts.map((shift) => (
-          <div key={shift.id || shift.code} className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-100">
+          <div key={shift.id || shift.code} className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-100 bg-white">
             <div
-              className="w-5 h-5 rounded flex items-center justify-center text-[8px] font-bold"
+              className="w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold"
               style={{ backgroundColor: shift.color, color: getContrastTextColor(shift.color) }}
             >
               {shift.code}
             </div>
-            <span className="text-[10px] text-slate-600 font-medium">{shift.name}</span>
+            <span className="text-[9px] text-slate-600 font-medium">{shift.name}</span>
+          </div>
+        ))}
+        {summaryItems.map((item) => (
+          <div key={item.code} className="flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-100 bg-white">
+            <div
+              className="w-4 h-4 rounded flex items-center justify-center text-[7px] font-bold"
+              style={{ backgroundColor: item.color, color: getContrastTextColor(item.color) }}
+            >
+              {item.code}
+            </div>
+            <span className="text-[9px] text-slate-600 font-medium">{item.name}</span>
           </div>
         ))}
       </div>
@@ -520,8 +537,8 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                 <div className="grid grid-cols-4 gap-px text-[7px] font-bold">
                   <span className="text-slate-500">WO</span>
                   <span className="text-amber-600">Lv</span>
-                  <span className="text-emerald-600">WD</span>
                   <span className="text-violet-600">OC</span>
+                  <span className="text-emerald-600">WD</span>
                 </div>
               </th>
             </tr>
@@ -535,7 +552,7 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                   {day}
                 </th>
               ))}
-              <th className="px-2 py-1 border-b border-l border-slate-200 bg-slate-50" />
+              <th className="px-1 py-1 border-b border-l border-slate-200 bg-slate-50 min-w-[100px]" />
             </tr>
           </thead>
           <tbody>
@@ -567,10 +584,10 @@ function MonthlyView({ members, shifts, shiftMap, assignments, selectedYear, sel
                 <td className="px-1 py-1 text-[9px] text-slate-600 border-l border-b border-slate-100 text-center">
                   {memberSummary[member.id] && (
                     <div className="grid grid-cols-4 gap-px">
-                      <span className="font-bold text-slate-600">{memberSummary[member.id].woCount}</span>
-                      <span className="font-bold text-amber-600">{memberSummary[member.id].leaveCount}</span>
-                      <span className="font-bold text-emerald-600">{memberSummary[member.id].shiftCount}</span>
-                      <span className="font-bold text-violet-600">{memberSummary[member.id].onCallCount}</span>
+                      <span className="font-bold text-slate-600 bg-gray-100 px-1 py-0.5 rounded">{memberSummary[member.id].woCount}</span>
+                      <span className="font-bold text-amber-600 bg-gray-100 px-1 py-0.5 rounded">{memberSummary[member.id].leaveCount}</span>
+                      <span className="font-bold text-violet-600 px-1 py-0.5 rounded">{memberSummary[member.id].onCallCount}</span>
+                      <span className="font-bold text-emerald-600 bg-green-100 px-1 py-0.5 rounded">{memberSummary[member.id].shiftCount}</span>
                     </div>
                   )}
                 </td>
@@ -656,7 +673,9 @@ export default function RosterPage() {
   const [shifts, setShifts] = useState([]);
   const [assignments, setAssignments] = useState({});
   const [onCallAssignments, setOnCallAssignments] = useState({});
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [hasUnsavedChanges, _setHasUnsavedChanges] = useState(false);
+  const hasUnsavedRef = useRef(false);
+  const setHasUnsavedChanges = useCallback((val) => { hasUnsavedRef.current = val; _setHasUnsavedChanges(val); }, []);
   const { isSyncing, startSync, stopSync } = useSync();
 
   // ---- Computed ----
@@ -699,9 +718,12 @@ export default function RosterPage() {
       fetchRoster(currentProject.id, selectedYear, selectedMonth),
       fetchOnCallAssignments(currentProject.id, selectedYear, selectedMonth),
     ]).then(([m, s, r, oc]) => {
+      // Skip overwriting roster if user has made local edits (e.g., just generated)
+      if (hasUnsavedRef.current) return;
+      const freshShiftMap = buildMap(s);
       setMembers(m.filter((mem) => mem.isActive && (mem.memberType || 'resource') === 'resource'));
       setShifts(s);
-      setAssignments(cleanAssignments(r?.assignments || {}, buildMap(s)));
+      setAssignments(cleanAssignments(r?.assignments || {}, freshShiftMap));
       setOnCallAssignments(oc);
       setHasUnsavedChanges(false);
     }).catch(() => {}).finally(() => stopSync());
@@ -768,8 +790,6 @@ export default function RosterPage() {
   const handleGenerate = () => {
     if (members.length === 0) { showToast('Add team members first', 'error'); return; }
     if (shifts.filter((s) => s.isWorkingShift).length === 0) { showToast('Add at least one working shift', 'error'); return; }
-    const confirmed = Object.keys(assignments).length > 0 ? window.confirm('This will replace the current roster. Continue?') : true;
-    if (!confirmed) return;
     const generated = generateRoster(members, shifts, selectedYear, selectedMonth, appConfig.rosterRules || {}, assignments);
     setAssignments(generated);
     setHasUnsavedChanges(true);
@@ -803,13 +823,11 @@ export default function RosterPage() {
   };
 
   const handleClear = () => {
-    if (window.confirm('Clear the entire roster for this month?')) {
-      deleteRoster(currentProject.id, selectedYear, selectedMonth);
-      syncDeleteRoster(currentProject.id, selectedYear, selectedMonth);
-      setAssignments({});
-      setHasUnsavedChanges(false);
-      showToast('Roster cleared', 'info');
-    }
+    deleteRoster(currentProject.id, selectedYear, selectedMonth);
+    syncDeleteRoster(currentProject.id, selectedYear, selectedMonth);
+    setAssignments({});
+    setHasUnsavedChanges(false);
+    showToast('Roster cleared', 'info');
   };
 
   const handleExport = () => {
@@ -823,9 +841,6 @@ export default function RosterPage() {
     if (!config.enabled) { showToast('Enable on-call in Shifts page first', 'error'); return; }
     const eligible = getOnCallEligibleMembers(currentProject.id);
     if (eligible.length === 0) { showToast('No eligible on-call members. Mark members as eligible in Members page.', 'error'); return; }
-    const hasExisting = Object.keys(onCallAssignments).length > 0;
-    const confirmed = hasExisting ? window.confirm('This will replace the current on-call schedule. Continue?') : true;
-    if (!confirmed) return;
     const generated = generateOnCallAssignments(eligible, selectedYear, selectedMonth, config);
     setOnCallAssignments(generated);
     saveOnCallAssignments(currentProject.id, selectedYear, selectedMonth, generated);
@@ -956,6 +971,9 @@ export default function RosterPage() {
         </div>
       </div>
 
+      {/* ---- Shift Legend (Top) ---- */}
+      <ShiftLegend shifts={shifts} />
+
       {/* ---- View Content ---- */}
       {activeView === 'daily' && (
         <DailyView
@@ -986,8 +1004,6 @@ export default function RosterPage() {
         />
       )}
 
-      {/* ---- Shift Legend ---- */}
-      <ShiftLegend shifts={shifts} />
     </div>
   );
 }

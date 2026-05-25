@@ -493,16 +493,11 @@ export default function ShiftsPage() {
     }
   };
 
-  /** Delete with confirmation */
+  /** Delete a shift */
   const handleDelete = (shift) => {
-    const confirmed = window.confirm(
-      `Delete shift "${shift.code} — ${shift.name}"? This cannot be undone.`
-    );
-    if (confirmed) {
-      deleteShift(currentProject.id, shift.id);
-      showToast(`Shift "${shift.code}" deleted`, 'info');
-      reloadShifts();
-    }
+    deleteShift(currentProject.id, shift.id);
+    showToast(`Shift "${shift.code}" deleted`, 'info');
+    reloadShifts();
   };
 
   // ---- On-Call Config Handlers ----
@@ -536,14 +531,9 @@ export default function ShiftsPage() {
 
   /** Reset all shifts to defaults */
   const handleResetDefaults = () => {
-    const confirmed = window.confirm(
-      'Reset all shifts to the default set? Your custom shifts will be removed.'
-    );
-    if (confirmed) {
-      resetToDefaults(currentProject.id);
-      showToast('Shifts reset to defaults', 'info');
-      reloadShifts();
-    }
+    resetToDefaults(currentProject.id);
+    showToast('Shifts reset to defaults', 'info');
+    reloadShifts();
   };
 
   // ---- No project state ----

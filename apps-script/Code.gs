@@ -151,7 +151,7 @@ function doPost(e) {
         return jsonResponse({ success: true });
 
       case 'deleteProject':
-        deleteProject(body.projectId);
+        deleteProject(body.projectId, body.projectName || '');
         return jsonResponse({ success: true });
 
       // ---- Members ----
@@ -409,7 +409,7 @@ function updateProject(projectId, updates) {
   saveProjects(projects);
 }
 
-function deleteProject(projectId) {
+function deleteProject(projectId, projectName) {
   // Remove project from list
   var projects = getProjects().filter(function(p) { return p.id !== projectId; });
   saveProjects(projects);
@@ -417,13 +417,33 @@ function deleteProject(projectId) {
   // Remove all associated sheets
   var ss = getSpreadsheet();
   var allSheets = ss.getSheets();
+  var suffix = projectName ? '- ' + projectName : '';
   for (var i = allSheets.length - 1; i >= 0; i--) {
     var name = allSheets[i].getName();
+    var shouldDelete = false;
+
+    // Match sheets containing the projectId (e.g., _shifts_proj_xxx, _members_proj_xxx, _roster_proj_xxx, etc.)
     if (name.indexOf(projectId) > -1 && name !== '_projects' && name !== '_admins') {
-      // Don't delete the last sheet (Sheets requires at least one)
-      if (ss.getSheets().length > 1) {
-        ss.deleteSheet(allSheets[i]);
-      }
+      shouldDelete = true;
+    }
+
+    // Match formatted roster sheets named with the project name (e.g., "May 2026 - Accessio_Operations")
+    if (suffix && name.indexOf(suffix) > -1) {
+      shouldDelete = true;
+    }
+
+    // Match project-specific Legend sheet (e.g., "Legend - Accessio_Operations")
+    if (suffix && name === 'Legend ' + suffix) {
+      shouldDelete = true;
+    }
+
+    // Also match legacy shared Legend sheet
+    if (name === 'Legend') {
+      shouldDelete = true;
+    }
+
+    if (shouldDelete && ss.getSheets().length > 1) {
+      ss.deleteSheet(allSheets[i]);
     }
   }
 
@@ -1349,21 +1369,23 @@ function createFormattedRosterSheet(projectId, projectName, year, month, members
   // Total column width
   sheet.setColumnWidth(totalCols, 50);
 
-  // ---- Create/update Legend sheet ----
-  createLegendSheet(shifts);
+  // ---- Create/update project-specific Legend sheet ----
+  createLegendSheet(projectName, shifts);
 }
 
 /**
- * Create or update the Legend sheet with shift definitions.
+ * Create or update a project-specific Legend sheet with shift definitions.
+ * Sheet is named "Legend - ProjectName" (or "Legend" if no project name).
  */
-function createLegendSheet(shifts) {
+function createLegendSheet(projectName, shifts) {
   var ss = getSpreadsheet();
-  var sheet = ss.getSheetByName('Legend');
+  var legendName = projectName ? 'Legend - ' + projectName : 'Legend';
+  var sheet = ss.getSheetByName(legendName);
   if (sheet) {
     sheet.clear();
     sheet.clearFormats();
   } else {
-    sheet = ss.insertSheet('Legend');
+    sheet = ss.insertSheet(legendName);
   }
 
   // Header

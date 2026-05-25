@@ -316,17 +316,11 @@ export default function MembersPage() {
     reloadMembers(); // syncs to backend
   };
 
-  /** Delete a member with confirmation */
+  /** Delete a member */
   const handleDelete = (member) => {
-    const confirmed = window.confirm(
-      `Remove "${member.name}" from this project? This cannot be undone.`
-    );
-
-    if (confirmed) {
-      deleteMember(currentProject.id, member.id);
-      showToast(`${member.name} removed`, 'info');
-      reloadMembers(); // syncs to backend
-    }
+    deleteMember(currentProject.id, member.id);
+    showToast(`${member.name} removed`, 'info');
+    reloadMembers(); // syncs to backend
   };
 
   /** Toggle a member's active/inactive status */

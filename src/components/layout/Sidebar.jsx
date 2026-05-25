@@ -23,6 +23,8 @@ import {
   Shield,
   Mail,
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import appConfig from '@config/app.json';
 import { usePermissions } from '@hooks/usePermissions';
@@ -45,15 +47,17 @@ const NAV_ITEMS = [
 
 // ---- Single Nav Link Component ----
 // Renders one navigation item with active state highlighting
-function SidebarLink({ item, onClick }) {
+function SidebarLink({ item, onClick, isCollapsed }) {
   const IconComponent = item.icon;
 
   return (
     <NavLink
       to={item.path}
       onClick={onClick}
+      title={item.label}
       className={({ isActive }) =>
-        `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200
+        `flex items-center rounded-lg text-sm font-medium transition-all duration-200
+        ${isCollapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}
         ${isActive
           ? 'bg-brand-50 text-brand-700 shadow-sm'
           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'
@@ -61,13 +65,13 @@ function SidebarLink({ item, onClick }) {
       }
     >
       <IconComponent size={18} className="flex-shrink-0" />
-      <span>{item.label}</span>
+      {!isCollapsed && <span className="truncate">{item.label}</span>}
     </NavLink>
   );
 }
 
 // ---- Main Sidebar Component ----
-export default function Sidebar({ isOpen, onClose }) {
+export default function Sidebar({ isOpen, onClose, isCollapsed, onToggleCollapse, sidebarWidth }) {
   const { isLoggedIn } = useAuth();
   const { isSiteAdmin, isProjectAdmin } = usePermissions();
 
@@ -93,56 +97,81 @@ export default function Sidebar({ isOpen, onClose }) {
         />
       )}
 
-      {/* Sidebar panel */}
+      {/* Sidebar panel — on desktop fills parent container, on mobile uses fixed overlay */}
       <aside
         className={`
-          fixed inset-y-0 left-0 z-50 w-40 bg-gradient-to-b from-teal-50/60 via-white to-white border-r border-teal-100
+          fixed inset-y-0 left-0 z-50 w-56 bg-gradient-to-b from-teal-50/60 via-white to-white border-r border-teal-100
           transform transition-transform duration-300 ease-in-out
-          lg:relative lg:translate-x-0 lg:z-0
+          lg:relative lg:translate-x-0 lg:z-0 lg:w-full lg:h-full
           ${isOpen ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
-        <div className="flex flex-col h-full">
+        <div className="flex flex-col h-full overflow-hidden">
 
           {/* ---- Logo & App Name ---- */}
-          <div className="flex items-center justify-between px-5 py-5 border-b border-teal-100">
-            <div className="flex items-center gap-3">
-              {/* App icon */}
-              <div className="w-9 h-9 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md">
-                <Shield size={18} className="text-white" />
-              </div>
-              {/* App name and version */}
-              <div>
-                <h1 className="text-base font-bold text-slate-800">{appConfig.appName}</h1>
-                <p className="text-[10px] text-slate-400 font-medium">v{appConfig.version}</p>
-              </div>
-            </div>
+          <div className={`flex items-center border-b border-teal-100 ${isCollapsed ? 'justify-center px-2 py-4' : 'justify-between px-4 py-4'}`}>
+            {isCollapsed ? (
+              /* Collapsed: show only the app icon as expand button */
+              <button
+                onClick={onToggleCollapse}
+                className="w-9 h-9 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md hover:shadow-lg transition-shadow"
+                title="Expand sidebar"
+              >
+                <ChevronRight size={16} className="text-white" />
+              </button>
+            ) : (
+              /* Expanded: show full header */
+              <>
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 bg-gradient-to-br from-teal-500 to-emerald-600 rounded-lg flex items-center justify-center shadow-md flex-shrink-0">
+                    <Shield size={18} className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="text-sm font-bold text-slate-800 truncate">{appConfig.appName}</h1>
+                    <p className="text-[10px] text-slate-400 font-medium">v{appConfig.version}</p>
+                  </div>
+                </div>
 
-            {/* Close button (mobile only) */}
-            <button
-              onClick={onClose}
-              className="lg:hidden text-slate-400 hover:text-slate-600 transition-colors"
-              aria-label="Close sidebar"
-            >
-              <X size={20} />
-            </button>
+                {/* Collapse button (desktop only) */}
+                {onToggleCollapse && (
+                  <button
+                    onClick={onToggleCollapse}
+                    className="hidden lg:flex items-center justify-center w-6 h-6 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors flex-shrink-0"
+                    title="Collapse sidebar"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                )}
+
+                {/* Close button (mobile only) */}
+                <button
+                  onClick={onClose}
+                  className="lg:hidden text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
+                  aria-label="Close sidebar"
+                >
+                  <X size={20} />
+                </button>
+              </>
+            )}
           </div>
 
           {/* ---- Navigation Links ---- */}
-          <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+          <nav className={`flex-1 py-3 space-y-1 overflow-y-auto ${isCollapsed ? 'px-1.5' : 'px-3'}`}>
             {visibleItems.map((item, index) =>
               item.type === 'separator'
                 ? <div key={`sep-${index}`} className="my-2 border-t border-slate-200" />
-                : <SidebarLink key={item.path} item={item} onClick={onClose} />
+                : <SidebarLink key={item.path} item={item} onClick={onClose} isCollapsed={isCollapsed} />
             )}
           </nav>
 
           {/* ---- Footer ---- */}
-          <div className="px-5 py-4 border-t border-teal-100">
-            <p className="text-[10px] text-slate-400 text-center">
-              {appConfig.appName} &copy; {new Date().getFullYear()}
-            </p>
-          </div>
+          {!isCollapsed && (
+            <div className="px-4 py-3 border-t border-teal-100">
+              <p className="text-[10px] text-slate-400 text-center truncate">
+                {appConfig.appName} &copy; {new Date().getFullYear()}
+              </p>
+            </div>
+          )}
         </div>
       </aside>
     </>

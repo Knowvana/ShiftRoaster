@@ -110,6 +110,17 @@ function assignWeekOffs(assignments, members, totalDays, year, month, minDaysOff
   for (const member of members) {
     const memberAssign = assignments[member.id];
 
+    // defaultShiftOnly members get WO on all Sat/Sun, default shift Mon-Fri
+    if (member.defaultShiftOnly) {
+      for (let day = 1; day <= totalDays; day++) {
+        const dow = getDayOfWeek(year, month, day);
+        if (dow === 0 || dow === 6) { // Sunday or Saturday
+          memberAssign[String(day)] = woCode;
+        }
+      }
+      continue;
+    }
+
     for (const week of weeks) {
       // Count how many off-days this member already has in this week
       // (from pre-filled leave)
@@ -236,6 +247,9 @@ function assignWorkingShifts(assignments, members, workingShifts, totalDays, yea
  */
 function fixConsecutiveDays(assignments, members, totalDays, maxConsecutive, woCode, workingShifts) {
   for (const member of members) {
+    // defaultShiftOnly members have fixed schedule (default shift Mon-Fri, WO weekends) — skip
+    if (member.defaultShiftOnly) continue;
+
     const memberAssign = assignments[member.id];
     let consecutiveWorkDays = 0;
 
@@ -277,9 +291,13 @@ function balanceShifts(assignments, members, workingShifts, totalDays) {
   // Pre-compute default shift codes
   const defaultShiftCodes = new Set(workingShifts.filter((s) => s.isDefault).map((s) => s.code));
 
+  // Exclude defaultShiftOnly members from balancing — their shifts are fixed
+  const balanceable = members.filter((m) => !m.defaultShiftOnly);
+  if (balanceable.length < 2) return;
+
   // For each working shift, count how many times each member has it
   for (const shift of workingShifts) {
-    const memberCounts = members.map((member) => {
+    const memberCounts = balanceable.map((member) => {
       let count = 0;
       for (let day = 1; day <= totalDays; day++) {
         if (assignments[member.id][String(day)] === shift.code) {
