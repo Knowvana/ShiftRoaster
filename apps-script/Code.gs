@@ -1499,6 +1499,12 @@ function sendProjectAdminCredentialsEmail(projectName, adminEmail, adminDisplayN
   html += '<p style="font-size:12px;color:#92400e;margin:0;line-height:1.6;">&#9888;&#65039; <strong>Security Notice:</strong> Please keep these credentials secure and do not share them with anyone. We recommend changing your password after your first login.</p>';
   html += '</div>';
 
+  // ── Access Application Button ──
+  html += '<div style="text-align:center;margin:28px 0 20px;">';
+  html += '<a href="https://knowvana.github.io/ShiftRoaster/" target="_blank" style="display:inline-block;background:linear-gradient(135deg,#0d9488 0%,#0f766e 100%);color:#ffffff;padding:14px 36px;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;letter-spacing:0.3px;box-shadow:0 4px 14px rgba(13,148,136,0.3);">&#128640; Access Shift Roster Application</a>';
+  html += '<p style="font-size:11px;color:#94a3b8;margin:10px 0 0;">https://knowvana.github.io/ShiftRoaster/</p>';
+  html += '</div>';
+
   // ── Support Contact ──
   if (siteAdminEmail) {
     html += '<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 20px;margin:20px 0;">';

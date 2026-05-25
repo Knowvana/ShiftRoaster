@@ -57,10 +57,34 @@ function saveProjects(projects) {
 }
 
 /**
+ * Extract the ?project=xxx param from the hash URL.
+ * Hash URLs look like: #/roster?project=proj_abc123
+ */
+function getProjectIdFromUrl() {
+  const hash = window.location.hash || '';
+  const qIndex = hash.indexOf('?');
+  if (qIndex === -1) return null;
+  const params = new URLSearchParams(hash.substring(qIndex));
+  return params.get('project') || null;
+}
+
+/**
  * Synchronously restore the current project from localStorage.
+ * If a ?project= param is in the URL, prefer that project.
  * Returns the project object or null.
  */
 function loadCurrentProject(allProjects) {
+  // Priority 1: URL param (shareable link)
+  const urlProjectId = getProjectIdFromUrl();
+  if (urlProjectId && allProjects.length > 0) {
+    const found = allProjects.find((p) => p.id === urlProjectId);
+    if (found) {
+      localStorage.setItem(STORAGE_KEY_CURRENT, found.id);
+      return found;
+    }
+  }
+
+  // Priority 2: localStorage
   const savedCurrentId = localStorage.getItem(STORAGE_KEY_CURRENT);
   if (savedCurrentId && allProjects.length > 0) {
     return allProjects.find((p) => p.id === savedCurrentId) || allProjects[0];

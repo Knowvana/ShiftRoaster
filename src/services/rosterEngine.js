@@ -100,10 +100,14 @@ export function generateRoster(members, shifts, year, month, rules = {}, existin
 // ============================================================================
 
 /**
- * Assign week-off days ensuring each member gets at least minDaysOff per week.
- * Strategy: spread week-offs across the week to maintain daily coverage.
+ * Assign week-off days ensuring each member gets EXACTLY daysOff per week.
+ * Strategy:
+ *   - Count existing off-days (leave) in each week
+ *   - Add WOs to reach exactly daysOff total non-working days
+ *   - Spread WOs across all 7 days to maximize daily coverage
+ *   - For partial weeks (start/end of month), scale proportionally
  */
-function assignWeekOffs(assignments, members, totalDays, year, month, minDaysOff, woCode) {
+function assignWeekOffs(assignments, members, totalDays, year, month, daysOff, woCode) {
   // Build list of weeks (each week is an array of day numbers)
   const weeks = getWeeks(totalDays, year, month);
 
@@ -122,8 +126,13 @@ function assignWeekOffs(assignments, members, totalDays, year, month, minDaysOff
     }
 
     for (const week of weeks) {
-      // Count how many off-days this member already has in this week
-      // (from pre-filled leave)
+      // For partial weeks (<7 days), scale WOs proportionally
+      // Full week = 2 WO out of 7, partial = round(week.length * 2/7)
+      const targetOff = week.length >= 7
+        ? daysOff
+        : Math.max(1, Math.round(week.length * daysOff / 7));
+
+      // Count how many off-days this member already has in this week (from pre-filled leave)
       let offDaysInWeek = 0;
       for (const day of week) {
         const dayStr = String(day);
@@ -132,26 +141,22 @@ function assignWeekOffs(assignments, members, totalDays, year, month, minDaysOff
         }
       }
 
-      // Add more week-offs if needed
-      const woNeeded = Math.max(0, minDaysOff - offDaysInWeek);
+      // Add WOs to reach exactly the target
+      const woNeeded = Math.max(0, targetOff - offDaysInWeek);
 
       if (woNeeded > 0) {
-        // Pick days with the MOST existing coverage (most members already working)
-        // to minimize impact on staffing
-        const availableDays = week.filter((day) => {
-          const dayStr = String(day);
-          return !memberAssign[dayStr]; // Only unassigned days
-        });
+        // Only pick unassigned days
+        const availableDays = week.filter((day) => !memberAssign[String(day)]);
 
         // Sort by how many OTHER members already have WO on that day (ascending)
-        // This spreads WOs across different days
+        // This distributes WOs across all 7 days of the week
         availableDays.sort((a, b) => {
           const countA = countWoOnDay(assignments, members, a, woCode);
           const countB = countWoOnDay(assignments, members, b, woCode);
           return countA - countB; // Prefer days where fewer people are off
         });
 
-        // Assign the needed WOs
+        // Assign exactly the needed WOs
         for (let i = 0; i < woNeeded && i < availableDays.length; i++) {
           memberAssign[String(availableDays[i])] = woCode;
         }
@@ -243,7 +248,8 @@ function assignWorkingShifts(assignments, members, workingShifts, totalDays, yea
 
 /**
  * Ensure no member works more than maxConsecutive days in a row.
- * If a violation is found, insert a WO day at the optimal position.
+ * Instead of inserting new WOs (which breaks the 5/2 balance), this swaps
+ * a working day in the streak with the nearest WO day outside the streak.
  */
 function fixConsecutiveDays(assignments, members, totalDays, maxConsecutive, woCode, workingShifts) {
   for (const member of members) {
@@ -251,22 +257,60 @@ function fixConsecutiveDays(assignments, members, totalDays, maxConsecutive, woC
     if (member.defaultShiftOnly) continue;
 
     const memberAssign = assignments[member.id];
-    let consecutiveWorkDays = 0;
 
-    for (let day = 1; day <= totalDays; day++) {
-      const dayStr = String(day);
-      const shiftCode = memberAssign[dayStr];
+    // Repeat until no violations remain (swaps may create new streaks)
+    let changed = true;
+    let passes = 0;
+    while (changed && passes < 10) {
+      changed = false;
+      passes++;
+      let consecutiveWorkDays = 0;
+      let streakStart = 0;
 
-      if (shiftCode && isWorkingCode(shiftCode)) {
-        consecutiveWorkDays++;
+      for (let day = 1; day <= totalDays; day++) {
+        const dayStr = String(day);
+        const shiftCode = memberAssign[dayStr];
 
-        // If exceeded max, convert the current day to WO
-        if (consecutiveWorkDays > maxConsecutive) {
-          memberAssign[dayStr] = woCode;
+        if (shiftCode && isWorkingCode(shiftCode)) {
+          if (consecutiveWorkDays === 0) streakStart = day;
+          consecutiveWorkDays++;
+
+          if (consecutiveWorkDays > maxConsecutive) {
+            // Find the nearest WO day to swap with the middle of the streak
+            const swapTarget = streakStart + Math.floor(maxConsecutive / 2);
+            const swapTargetStr = String(swapTarget);
+
+            // Look for nearest WO outside the streak (search outward from streak)
+            let woDay = null;
+            for (let dist = 1; dist <= totalDays; dist++) {
+              // Search after the streak first, then before
+              const after = day + dist;
+              const before = streakStart - dist;
+              if (after <= totalDays && memberAssign[String(after)] === woCode) {
+                woDay = after; break;
+              }
+              if (before >= 1 && memberAssign[String(before)] === woCode) {
+                woDay = before; break;
+              }
+            }
+
+            if (woDay) {
+              // Swap: move the WO into the streak, move the working shift out
+              const woDayStr = String(woDay);
+              const savedShift = memberAssign[swapTargetStr];
+              memberAssign[swapTargetStr] = woCode;
+              memberAssign[woDayStr] = savedShift;
+              changed = true;
+            } else {
+              // No WO to swap — last resort: convert current day to WO
+              memberAssign[dayStr] = woCode;
+              changed = true;
+            }
+            consecutiveWorkDays = 0;
+          }
+        } else {
           consecutiveWorkDays = 0;
         }
-      } else {
-        consecutiveWorkDays = 0;
       }
     }
   }

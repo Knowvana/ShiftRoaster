@@ -23,7 +23,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Calendar, ChevronLeft, ChevronRight, Wand2,
-  Trash2, Save, Users, Download, CalendarDays, CalendarRange, PhoneCall,
+  Trash2, Save, Users, Download, CalendarDays, CalendarRange, PhoneCall, Link2,
 } from 'lucide-react';
 import { useProject } from '@hooks/useProject';
 import { useToast } from '@hooks/useToast';
@@ -191,54 +191,153 @@ function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selec
   const dayName = getDayName(dow);
   const isWeekend = dow === 0 || dow === 6;
 
-  // Count working / on-leave / on-call members for this day
-  let workingCount = 0;
-  let leaveCount = 0;
   const onCallToday = getOnCallMembers(onCallAssignments || {}, selectedDay);
-  for (const member of members) {
-    const code = assignments[member.id]?.[String(selectedDay)] || null;
-    const shift = code ? shiftMap[code] : null;
-    if (shift && shift.isWorkingShift) workingCount++;
-    else if (code && shift && !shift.isWorkingShift) leaveCount++;
-  }
+
+  // Group members by their shift for this day
+  const grouped = useMemo(() => {
+    const shiftGroups = {}; // { shiftCode: { shift, members: [] } }
+    let workingCount = 0, offCount = 0, leaveCount = 0;
+
+    for (const member of members) {
+      const code = assignments[member.id]?.[String(selectedDay)] || null;
+      const shift = code ? shiftMap[code] : null;
+      const isOC = onCallToday.includes(member.id);
+
+      if (!code) {
+        if (!shiftGroups['__unassigned']) shiftGroups['__unassigned'] = { shift: null, code: null, members: [] };
+        shiftGroups['__unassigned'].members.push({ ...member, isOC });
+      } else {
+        if (!shiftGroups[code]) shiftGroups[code] = { shift, code, members: [] };
+        shiftGroups[code].members.push({ ...member, isOC });
+      }
+
+      if (shift && shift.isWorkingShift) workingCount++;
+      else if (code === 'WO') offCount++;
+      else if (code && shift && !shift.isWorkingShift) leaveCount++;
+    }
+
+    // Sort: working shifts first (sorted by name), then non-working, then unassigned
+    const sortedKeys = Object.keys(shiftGroups).sort((a, b) => {
+      if (a === '__unassigned') return 1;
+      if (b === '__unassigned') return -1;
+      const sa = shiftMap[a], sb = shiftMap[b];
+      if (sa?.isWorkingShift && !sb?.isWorkingShift) return -1;
+      if (!sa?.isWorkingShift && sb?.isWorkingShift) return 1;
+      return (sa?.name || a).localeCompare(sb?.name || b);
+    });
+
+    return { shiftGroups, sortedKeys, workingCount, offCount, leaveCount };
+  }, [members, assignments, selectedDay, shiftMap, onCallToday]);
+
+  // Resolve on-call member names
+  const onCallNames = onCallToday.map((id) => {
+    const m = members.find((mem) => mem.id === id);
+    return m ? m.name : '?';
+  });
 
   return (
     <div className="space-y-4">
-      {/* Day summary header */}
-      <div className="card p-4 flex items-center justify-between">
-        <div>
-          <span className={`text-lg font-bold ${isWeekend ? 'text-rose-600' : 'text-slate-800'}`}>
-            {dayName}, {selectedDay} {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
-          </span>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Day {selectedDay} of {totalDays}
-          </p>
+      {/* ── Day Header ── */}
+      <div className={`card overflow-hidden ${isWeekend ? 'border-rose-200' : ''}`}>
+        <div className={`px-5 py-4 ${isWeekend ? 'bg-gradient-to-r from-rose-50 to-orange-50' : 'bg-gradient-to-r from-slate-50 to-blue-50'}`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className={`text-lg font-bold ${isWeekend ? 'text-rose-700' : 'text-slate-800'}`}>
+                {dayName}, {selectedDay} {MONTH_NAMES[selectedMonth - 1]} {selectedYear}
+              </h2>
+              <p className="text-[11px] text-slate-500 mt-0.5">Day {selectedDay} of {totalDays}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-4 text-xs font-medium">
-          <span className="text-emerald-600">Working: {workingCount}</span>
-          <span className="text-amber-600">Off/Leave: {leaveCount}</span>
-          {onCallToday.length > 0 && <span className="text-violet-600">On-Call: {onCallToday.length}</span>}
+        {/* Stats bar */}
+        <div className="grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100">
+          <div className="px-4 py-3 text-center">
+            <p className="text-lg font-bold text-emerald-600">{grouped.workingCount}</p>
+            <p className="text-[10px] text-slate-500 font-medium">Working</p>
+          </div>
+          <div className="px-4 py-3 text-center">
+            <p className="text-lg font-bold text-slate-500">{grouped.offCount}</p>
+            <p className="text-[10px] text-slate-500 font-medium">Week Off</p>
+          </div>
+          <div className="px-4 py-3 text-center">
+            <p className="text-lg font-bold text-amber-600">{grouped.leaveCount}</p>
+            <p className="text-[10px] text-slate-500 font-medium">On Leave</p>
+          </div>
+          <div className="px-4 py-3 text-center">
+            <p className="text-lg font-bold text-violet-600">{onCallToday.length}</p>
+            <p className="text-[10px] text-slate-500 font-medium">On-Call</p>
+          </div>
         </div>
       </div>
 
-      {/* Member list */}
-      <div className="space-y-1.5">
-        {members.map((member) => {
-          const code = assignments[member.id]?.[String(selectedDay)] || null;
-          const shift = code ? shiftMap[code] : null;
+      {/* ── On-Call Card ── */}
+      {onCallToday.length > 0 && (
+        <div className="card border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <PhoneCall size={14} className="text-violet-600" />
+            <h3 className="text-xs font-bold text-violet-700 uppercase tracking-wide">On-Call Today</h3>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {onCallNames.map((name, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white border border-violet-200 shadow-sm">
+                <span className="w-6 h-6 rounded-full bg-violet-500 text-white text-[10px] font-bold flex items-center justify-center flex-shrink-0">
+                  {name.charAt(0).toUpperCase()}
+                </span>
+                <span className="text-xs font-semibold text-violet-800">{name}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
-          const memberOnCall = onCallToday.includes(member.id);
+      {/* ── Shift Groups ── */}
+      <div className="space-y-3">
+        {grouped.sortedKeys.map((key) => {
+          const group = grouped.shiftGroups[key];
+          const shift = group.shift;
+          const isWorking = shift && shift.isWorkingShift;
+          const isUnassigned = key === '__unassigned';
+          const shiftLabel = isUnassigned ? 'Unassigned' : (shift ? `${shift.name} (${shift.code})` : key);
+          const bgColor = shift ? shift.color : '#e2e8f0';
 
           return (
-            <DailyMemberRow
-              key={member.id}
-              member={member}
-              shiftCode={code}
-              shift={shift}
-              allShifts={shifts}
-              onSelect={(newCode) => onCellChange(member.id, selectedDay, newCode)}
-              isOnCall={memberOnCall}
-            />
+            <div key={key} className="card overflow-hidden">
+              {/* Shift group header */}
+              <div className="flex items-center gap-3 px-4 py-2.5 border-b border-slate-100" style={{ backgroundColor: isUnassigned ? '#f8fafc' : `${bgColor}15` }}>
+                {!isUnassigned && (
+                  <div
+                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0"
+                    style={{ backgroundColor: bgColor }}
+                  >
+                    {group.code}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-semibold text-slate-700">{shiftLabel}</span>
+                  {shift && shift.startTime && (
+                    <span className="text-[10px] text-slate-400 ml-2">{shift.startTime} – {shift.endTime}</span>
+                  )}
+                </div>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${isWorking ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                  {group.members.length} {group.members.length === 1 ? 'member' : 'members'}
+                </span>
+              </div>
+
+              {/* Members in this shift */}
+              <div className="divide-y divide-slate-50">
+                {group.members.map((member) => (
+                  <DailyMemberRow
+                    key={member.id}
+                    member={member}
+                    shiftCode={group.code}
+                    shift={shift}
+                    allShifts={shifts}
+                    onSelect={(newCode) => onCellChange(member.id, selectedDay, newCode)}
+                    isOnCall={member.isOC}
+                  />
+                ))}
+              </div>
+            </div>
           );
         })}
       </div>
@@ -249,40 +348,49 @@ function DailyView({ members, shifts, shiftMap, assignments, selectedYear, selec
 // ---- Single member row in Daily view ----
 function DailyMemberRow({ member, shiftCode, shift, allShifts, onSelect, isOnCall: memberIsOnCall }) {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const isEditable = typeof onSelect === 'function';
 
   return (
-    <div className="card p-3 flex items-center justify-between gap-3 relative">
+    <div className="px-4 py-2.5 flex items-center justify-between gap-3 relative hover:bg-slate-50/50 transition-colors">
       {/* Member info */}
       <div className="flex items-center gap-3 min-w-0">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0
+        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0
           ${shift && shift.isWorkingShift ? 'bg-teal-500' : 'bg-slate-400'}`}
         >
           {member.name.charAt(0).toUpperCase()}
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <p className="text-sm font-semibold text-slate-800 truncate">{member.name}</p>
+            <p className="text-xs font-semibold text-slate-800 truncate">{member.name}</p>
             {memberIsOnCall && (
-              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-violet-100 text-violet-700 flex-shrink-0">
-                <PhoneCall size={11} /> OC
+              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-bold bg-yellow-100 text-yellow-800 border border-yellow-200 flex-shrink-0">
+                <PhoneCall size={9} /> On-Call
               </span>
             )}
           </div>
-          {member.role && <p className="text-[10px] text-slate-400">{member.role}</p>}
         </div>
       </div>
 
       {/* Shift badge (clickable) */}
-      <button
-        onClick={() => setIsPickerOpen(true)}
-        className="px-3 py-1.5 rounded-lg text-xs font-bold text-white min-w-[50px] text-center transition-all hover:scale-105"
-        style={{ backgroundColor: shift ? shift.color : '#e2e8f0', color: shift ? '#fff' : '#94a3b8' }}
-      >
-        {shiftCode || '—'}
-      </button>
+      {isEditable ? (
+        <button
+          onClick={() => setIsPickerOpen(true)}
+          className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white min-w-[42px] text-center transition-all hover:scale-105"
+          style={{ backgroundColor: shift ? shift.color : '#e2e8f0', color: shift ? '#fff' : '#94a3b8' }}
+        >
+          {shiftCode || '—'}
+        </button>
+      ) : (
+        <span
+          className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-white min-w-[42px] text-center"
+          style={{ backgroundColor: shift ? shift.color : '#e2e8f0', color: shift ? '#fff' : '#94a3b8' }}
+        >
+          {shiftCode || '—'}
+        </span>
+      )}
 
       {/* Picker popover */}
-      {isPickerOpen && (
+      {isEditable && isPickerOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsPickerOpen(false)} />
           <div className="absolute right-0 top-full mt-1 z-50">
@@ -307,9 +415,8 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
 
   // Calculate the week (Mon–Sun) containing the selected day
   const weekDays = useMemo(() => {
-    // Find Monday of the week containing selectedDay
     const date = new Date(selectedYear, selectedMonth - 1, selectedDay);
-    const dayOfWeek = date.getDay(); // 0=Sun, 1=Mon...
+    const dayOfWeek = date.getDay();
     const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
 
     const days = [];
@@ -333,6 +440,24 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
     return days;
   }, [selectedYear, selectedMonth, selectedDay]);
 
+  // Per-member weekly summary: WO, Leave, Shift days, On-call days (only for in-month days)
+  const memberSummary = useMemo(() => {
+    const summary = {};
+    for (const member of members) {
+      let woCount = 0, leaveCount = 0, shiftCount = 0, onCallCount = 0;
+      for (const wd of weekDays) {
+        if (!wd.isInMonth) continue;
+        const code = assignments[member.id]?.[String(wd.day)];
+        if (code === 'WO') woCount++;
+        else if (code && !shiftMap[code]?.isWorkingShift) leaveCount++;
+        else if (code && shiftMap[code]?.isWorkingShift) shiftCount++;
+        if (isOnCall(onCallAssignments, member.id, wd.day)) onCallCount++;
+      }
+      summary[member.id] = { woCount, leaveCount, shiftCount, onCallCount };
+    }
+    return summary;
+  }, [assignments, members, weekDays, shiftMap, onCallAssignments]);
+
   return (
     <div className="card overflow-hidden">
       <div className="overflow-x-auto">
@@ -355,6 +480,14 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
                   <div className="text-[10px] font-bold mt-0.5">{wd.dateLabel}</div>
                 </th>
               ))}
+              <th className="px-1 py-1 text-[10px] font-semibold text-slate-500 border-b border-l border-slate-200 bg-slate-50 min-w-[100px]" colSpan={1}>
+                <div className="grid grid-cols-4 gap-px text-[7px] font-bold">
+                  <span className="text-slate-500">WO</span>
+                  <span className="text-amber-600">Lv</span>
+                  <span className="text-violet-600">OC</span>
+                  <span className="text-emerald-600">WD</span>
+                </div>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -364,7 +497,6 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
                   {member.name}
                 </td>
                 {weekDays.map((wd, i) => {
-                  // Only allow editing days within the current month
                   if (!wd.isInMonth) {
                     return (
                       <td key={i} className="p-0 border border-slate-100 bg-slate-50/50">
@@ -374,6 +506,7 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
                   }
                   const code = assignments[member.id]?.[String(wd.day)] || null;
                   const shiftObj = code ? shiftMap[code] : null;
+                  const memberOnCallToday = isOnCall(onCallAssignments, member.id, wd.day);
                   return (
                     <RosterCell
                       key={i}
@@ -381,15 +514,31 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
                       shiftColor={shiftObj ? shiftObj.color : null}
                       allShifts={shifts}
                       onSelect={(c) => onCellChange(member.id, wd.day, c)}
-                    />
+                    >
+                      {memberOnCallToday && (
+                        <span className="absolute -top-0.5 -right-0.5 z-10 w-4.5 h-4.5 bg-yellow-400 border-2 border-white rounded-full flex items-center justify-center shadow-sm" title="On-Call">
+                          <PhoneCall size={10} className="text-yellow-900" />
+                        </span>
+                      )}
+                    </RosterCell>
                   );
                 })}
+                <td className="px-1 py-1 text-[9px] text-slate-600 border-l border-b border-slate-100 text-center">
+                  {memberSummary[member.id] && (
+                    <div className="grid grid-cols-4 gap-px">
+                      <span className="font-bold text-slate-600 bg-gray-100 px-1 py-0.5 rounded">{memberSummary[member.id].woCount}</span>
+                      <span className="font-bold text-amber-600 bg-gray-100 px-1 py-0.5 rounded">{memberSummary[member.id].leaveCount}</span>
+                      <span className="font-bold text-violet-600 px-1 py-0.5 rounded">{memberSummary[member.id].onCallCount}</span>
+                      <span className="font-bold text-emerald-600 bg-green-100 px-1 py-0.5 rounded">{memberSummary[member.id].shiftCount}</span>
+                    </div>
+                  )}
+                </td>
               </tr>
             ))}
 
             {/* On-Call row */}
-            <tr className="bg-violet-50 border-t border-violet-200">
-              <td className="sticky left-0 z-10 bg-violet-50 px-3 py-2 text-[10px] font-bold text-violet-700 text-left border-r border-violet-200">
+            <tr className="bg-gradient-to-r from-violet-50 to-purple-50 border-t border-violet-200">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-violet-50 to-purple-50 px-3 py-2 text-[10px] font-bold text-violet-700 text-left border-r border-violet-200 uppercase tracking-wide whitespace-nowrap">
                 <span className="flex items-center gap-1"><PhoneCall size={10} /> On-Call</span>
               </td>
               {weekDays.map((wd, i) => {
@@ -400,37 +549,44 @@ function WeeklyView({ members, shifts, shiftMap, assignments, selectedYear, sele
                   const m = members.find((mem) => mem.id === id);
                   if (!m) return '?';
                   const parts = m.name.split(' ');
-                  return parts[0].length <= 8 ? parts[0] : (parts[0][0] + (parts[1] ? parts[1][0] : ''));
+                  return parts[0].length <= 6 ? parts[0] : (parts[0][0] + (parts[1] ? parts[1][0] : ''));
                 });
                 const fullNames = ocMembers.map((id) => {
                   const m = members.find((mem) => mem.id === id);
                   return m ? m.name : '?';
                 }).join(', ');
                 return (
-                  <td key={i} className={`px-1 py-1 text-[9px] font-bold border border-violet-100 text-center ${count > 0 ? 'bg-violet-100 text-violet-700' : 'text-slate-300'}`} title={count > 0 ? fullNames : 'No on-call'}>
-                    {count > 0 ? nameLabels.join(', ') : '\u2014'}
+                  <td key={i} className={`px-0 py-1 text-[8px] font-bold border border-violet-100 text-center transition-colors leading-tight ${count > 0 ? 'bg-violet-100 text-violet-700' : 'bg-slate-50 text-slate-300'}`} title={count > 0 ? fullNames : 'No on-call'}>
+                    {count > 0 ? (
+                      <div className="flex flex-col items-center gap-0">
+                        <span className="text-[9px] font-extrabold text-violet-800">{count}</span>
+                        {nameLabels.map((n, ni) => <span key={ni} className="text-[7px] text-violet-600">{n}</span>)}
+                      </div>
+                    ) : '—'}
                   </td>
                 );
               })}
+              <td className="px-2 py-2 border-l border-violet-200 bg-gradient-to-r from-violet-50 to-purple-50" />
             </tr>
             {/* Availability row */}
-            <tr className="bg-slate-50 border-t-2 border-slate-300">
-              <td className="sticky left-0 z-10 bg-slate-50 px-3 py-2 text-[10px] font-bold text-slate-600 text-left border-r border-slate-200">
-                Availability
+            <tr className="bg-gradient-to-r from-emerald-50 to-teal-50 border-t-2 border-emerald-200">
+              <td className="sticky left-0 z-10 bg-gradient-to-r from-emerald-50 to-teal-50 px-3 py-2.5 text-[10px] font-bold text-emerald-700 text-left border-r border-emerald-200 uppercase tracking-wide whitespace-nowrap">
+                👥 Staff
               </td>
               {weekDays.map((wd, i) => {
-                if (!wd.isInMonth) return <td key={i} className="border border-slate-200 bg-slate-50" />;
+                if (!wd.isInMonth) return <td key={i} className="border border-emerald-100 bg-slate-50" />;
                 let wc = 0;
                 for (const m of members) {
                   const c = assignments[m.id]?.[String(wd.day)];
                   if (c && shiftMap[c] && shiftMap[c].isWorkingShift) wc++;
                 }
                 return (
-                  <td key={i} className="px-0 py-2 text-[10px] font-bold border border-slate-200 text-center">
-                    <span className={wc > 0 ? 'text-emerald-600' : 'text-slate-300'}>{wc}</span>
+                  <td key={i} className={`px-0 py-2.5 text-[11px] font-bold border border-emerald-100 text-center transition-colors ${wc > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-50 text-slate-300'}`}>
+                    {wc}
                   </td>
                 );
               })}
+              <td className="px-2 py-2.5 border-l border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50" />
             </tr>
           </tbody>
         </table>
@@ -968,6 +1124,17 @@ export default function RosterPage() {
               <Trash2 size={14} /> Clear
             </button>
           )}
+          <button
+            onClick={() => {
+              const base = window.location.origin + window.location.pathname;
+              const url = `${base}#/roster?project=${currentProject.id}`;
+              navigator.clipboard.writeText(url).then(() => showToast('Roster URL copied to clipboard!', 'success')).catch(() => showToast('Failed to copy URL', 'error'));
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-white text-slate-600 border border-slate-300 hover:bg-slate-50 transition-colors"
+            title="Copy a shareable link to this project's roster"
+          >
+            <Link2 size={14} /> Copy Roster URL
+          </button>
         </div>
       </div>
 
